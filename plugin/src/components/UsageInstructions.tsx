@@ -36,7 +36,7 @@ export function UsageInstructions() {
         >
           {t(
             "USAGE_DESC",
-            "Copy the launch option into your Steam game's launch options to enable MAKO Renderer for frame generation, scaling, or both.",
+            "Add this Steam launch option to enable MAKO Frame Generation, Scaling, or both.",
           )}
         </div>
       </MakoInfo>

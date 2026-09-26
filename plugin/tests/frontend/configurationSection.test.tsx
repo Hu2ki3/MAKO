@@ -306,7 +306,7 @@ describe("Configuration controls", () => {
     expect(screen.getByText("Enable Shaders (Restart)")).toBeTruthy();
     expect(
       screen.getByText(
-        "Enable before starting the game. Applies MAKO's bundled sharpening, anti-aliasing, and shader effects. No separate installation is needed. If effects are not visible, switch between Windowed and Fullscreen.",
+        /Enable before launch for bundled sharpening, anti-aliasing, and shaders/,
       ),
     ).toBeTruthy();
     expect(
@@ -715,7 +715,7 @@ describe("Configuration controls", () => {
 
     expect(
       screen.getByText(
-        "Turning this on disables Steady Base Cap and Base FPS Cap, and resets Real Frame Priority to Automatic. Changing either cap or Real Frame Priority later turns Recovery off.",
+        "Recovery disables Steady Base Cap and Base FPS Cap and resets Real Frame Priority to Automatic. Changing either cap or priority turns Recovery off.",
       ),
     ).toBeTruthy();
     expect(
@@ -800,7 +800,7 @@ describe("Configuration controls", () => {
     expect(
       screen
         .getByText(
-          "This compatibility path is limited to supported 64-bit host launches. Leave it off when the game does not need it, as it may impact performance.",
+          "Only supported 64-bit host launches. Leave off unless needed; it may reduce performance.",
         )
         .getAttribute("data-tone"),
     ).toBe("warning");
@@ -872,7 +872,7 @@ describe("Configuration controls", () => {
       expect(
         screen
           .getByText(
-            "This compatibility path is limited to supported 64-bit host launches. Leave it off when the game does not need it, as it may impact performance.",
+            "Only supported 64-bit host launches. Leave off unless needed; it may reduce performance.",
           )
           .getAttribute("data-tone"),
       ).toBe("warning");
@@ -994,7 +994,7 @@ describe("Configuration controls", () => {
     ]);
     expect(dropdown.textContent).toBe("2s");
     expect(
-      screen.getByText(/How often Recovery tests the native frame rate/).style
+      screen.getByText(/Recovery check interval/).style
         .paddingBottom,
     ).toBe("6px");
     fireEvent.click(dropdown);

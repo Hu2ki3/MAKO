@@ -22,12 +22,17 @@ The profile dropdown chooses which profile you are editing; it does not force th
 
 Turn on **Enable Frame-gen (Restart)** before starting the game.
 
-- **Fixed** uses the selected 2x–5x multiplier. Start with 2x. Select `0x` to pause generation without losing the saved multiplier.
-- **Adaptive** varies generation toward **Target FPS** without slowing a game already above the target. Set **Maximum Multiplier** only as high as needed.
-- **Steady Base Cap** favours a stable cadence. **Fractional Adaptive** retains more real frames and may reduce latency, but can feel less even.
-- **Real Frame Priority** is available with Fractional Adaptive and controls the preferred balance between real and generated frames.
-- **Smooth Cadence** favours consistent delivery. Disable it if the game feels more responsive without it.
-- **Auto-disable by Refresh Rate** pauses generation at or below the selected Gamescope refresh threshold.
+**Real FPS** counts game-rendered frames; **output FPS** also includes generated frames. Fixed 2x can request 120 output FPS from 60 real FPS if the Renderer and display keep up. **Target FPS** is a desired output rate, not a guarantee of game FPS or physical display scanout.
+
+- **Fixed** requests the selected 2x–5x total output ratio. Start with 2x. Select `0x` to pause generation without losing the saved multiplier.
+- **Adaptive** varies generation toward **Target FPS** without slowing a game already above the target. **Maximum Multiplier** is a ceiling, not a fixed ratio; MAKO may use less or miss a target the game and GPU cannot sustain.
+- **Steady Base Cap** starts by limiting real FPS to half the target, such as 60 real FPS for a 120 FPS target, to favour an even cadence. With Smooth Cadence, it can align a validated higher integer ratio. The cap may reduce responsiveness.
+- **Fractional Adaptive** allows a changing mix of real and generated frames. It can retain more real frames and feel more responsive than Steady Base Cap, but may feel less even, especially on some VRR setups.
+- **Real Frame Priority** sets a target-relative real-frame ceiling in Fractional mode. At a 120 FPS target, Low, Medium, High, and Very High correspond to 72, 80, 90, and 96 real FPS caps. Higher priority permits more real frames but does not make a game deliver them. Automatic keeps the normal Fractional policy.
+- **Base FPS Cap** manually limits real FPS; Off adds no MAKO real-frame cap. Steady Base Cap or an explicit Fractional Real Frame Priority takes precedence while active. Changing this cap turns Dynamic Cadence Recovery off.
+- **Smooth Cadence** favours consistent delivery and can let eligible ordered Gamescope presentation pace the game. It may lower real FPS and responsiveness, so compare both settings in the affected game.
+- **Gamescope VRR** follows Steam by default. On or Off temporarily requests live VRR for this game's MAKO Frame Generation session only when Gamescope reports support on the active display and `gamescopectl` and the systemd user service are available. Unsupported or unknown displays leave the option saved but the live setting untouched. MAKO restores the previous state afterward unless Steam or the user changed it during play. Gamescope's VRR state is session-wide; this option does not set FPS or the display refresh rate.
+- **Auto-disable by Refresh Rate** pauses generation at or below the selected Gamescope refresh threshold. It has no effect without confirmed refresh feedback.
 
 Most Frame Generation controls apply live after Frame Generation was enabled at startup. Changes that require a larger private resource set may cause a brief hitch or wait for a game recreation.
 
@@ -44,7 +49,7 @@ Turn on **Enable Scaling (Restart)** before starting the game. Gamescope/Game Mo
 
 Set Steam's **Game Resolution** to the display maximum, then choose a lower resolution inside the game. Scaling is active when **Live Status** shows an input resolution smaller than the display resolution. Some games require Windowed mode because fullscreen or borderless keeps a display-sized input.
 
-- **Scale Factor** controls the output size from 1.0x to 2.0x.
+- **Scale Factor** targets output width and height from 1.0x to 2.0x the game render size. On fixed-size surfaces, MAKO requests a smaller render size to keep output fixed; on variable-size surfaces, it enlarges the game's requested image within display and GPU limits.
 - **Sharpness** controls reconstruction sharpening and is hidden for Native Resolution.
 - **Quality Supersampling** can improve quality on supported Gamescope surfaces but increases GPU and memory use.
 
@@ -55,6 +60,7 @@ Method and sharpness changes apply live. Factor or supersampling changes may wai
 Turn on **Enable Shaders (Restart)** to use MAKO's private bundled vkBasalt build. No separate vkBasalt installation is needed.
 
 - **Effects** is a multi-selection list. Effects run in the displayed order; unchecking and rechecking an effect moves it to the end. **Clear all** removes the chain.
+- **Sharpening** offers CAS or DLS; **Sharpness** adjusts its strength, and **DLS Denoise** appears only with DLS. **Anti-aliasing** offers lighter, softer FXAA or more selective SMAA.
 - Sharpening, sharpness, DLS denoise, anti-aliasing, and the selected effects apply live after Shaders was enabled at startup. Rebuilding an effect chain may cause a brief hitch.
 - Combining several effects increases GPU cost.
 - **HDR Look (SDR)** adjusts contrast and colour but remains SDR; it does not enable HDR output or increase display luminance.
@@ -74,11 +80,11 @@ The note below the controls shows the active profile configuration file. Advance
 
 Leave compatibility options at their defaults unless a game needs them.
 
-- **Dynamic Cadence Recovery** helps games and emulators that switch between rates, such as 30 FPS gameplay and 60 FPS menus.
+- **Dynamic Cadence Recovery** helps games and emulators that switch between rates, such as 30 FPS gameplay and 60 FPS menus. It periodically checks native cadence and clears real-frame caps while enabled.
 - **Gamescope WSI (Restart)** is an optional compatibility path for coloured or pixelated motion artifacts in supported 64-bit Gamescope launches.
 - **Game Swapchain Images (Restart)** may help titles that fail to start with MAKO's normal generated-output headroom, but can reduce generated-frame availability.
 - **Disable MAKO Renderer on Next Launch** temporarily bypasses the Renderer for troubleshooting.
-- **Disable Steam Deck Mode**, **Zink**, and **Force ALSA** are per-game compatibility switches and require a restart.
+- **Disable Steam Deck Mode** may expose settings hidden by a game's handheld mode. **Zink** routes OpenGL through Vulkan; **Force ALSA** changes the audio path and may help a game affected by Zink or audio stutter. These per-game compatibility switches require a restart.
 - **MangoHud (Restart)** uses the host installation and cannot run alongside MAKO Shaders for the same profile.
 
 Frame Generation and Scaling remain SDR-only in this release. **Disable HDR** remains enabled and read-only.

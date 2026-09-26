@@ -143,6 +143,7 @@ class DualArchInstallationTests(unittest.TestCase):
         self.service.registered_json_file = registered_dir / JSON_FILENAME
         self.service.registered_json32_file = registered_dir / JSON32_FILENAME
         self.service.cli_file = self.root / "bin/mako-cli"
+        self.service.vrr_lease_file = self.root / "bin/mako-vrr-lease"
         self.service.mako_launch_script_path = self.root / "bin/mako-run"
         self.service.diagnostics_script_path = self.root / "bin/mako-diagnostics"
         self.service.engine_state_file = self.root / "installed-engine.json"
@@ -203,6 +204,7 @@ class DualArchInstallationTests(unittest.TestCase):
     def _archive(self, include_32bit: bool = True) -> Path:
         archive_path = self.root / "engine.tar.xz"
         members = {
+            "bin/mako-vrr-lease": b"#!/usr/bin/env python3\n",
             f"lib/{LIB_FILENAME}": (
                 b"ELF64" + MAKO_LAYER_BUILD_MARKER + MAKO_PROFILE_FALLBACK_MARKER
             ),
@@ -1158,6 +1160,7 @@ class DualArchInstallationTests(unittest.TestCase):
         self.assertEqual(self.service.lib32_file.stat().st_mode & 0o777, 0o644)
         self.assertEqual(self.service.json_file.stat().st_mode & 0o777, 0o644)
         self.assertEqual(self.service.json32_file.stat().st_mode & 0o777, 0o644)
+        self.assertEqual(self.service.vrr_lease_file.stat().st_mode & 0o777, 0o755)
 
     def test_install_atomically_replaces_read_only_managed_files(self):
         for path in (self.service.lib_file, self.service.lib32_file):

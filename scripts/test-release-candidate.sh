@@ -37,15 +37,17 @@ make_candidate() {
   local candidate_commit="$2"
   local engine_commit="$3"
   local include_second_flatpak="$4"
-  python3 - "$archive" "$candidate_commit" "$engine_commit" "$include_second_flatpak" "$test_root/renderer.tar.xz" <<'PY'
+  local builder_mode="${5:-portable}"
+  python3 - "$archive" "$candidate_commit" "$engine_commit" "$include_second_flatpak" "$test_root/renderer.tar.xz" "$builder_mode" <<'PY'
 import json
 import sys
 import zipfile
 
-archive, commit, engine_commit, include_second, renderer = sys.argv[1:]
+archive, commit, engine_commit, include_second, renderer, builder_mode = sys.argv[1:]
+renderer_name = f'MAKO-Renderer-v0.0.0-local.abcdef0.{builder_mode}-linux.tar.xz'
 manifest = {
     'bundled_renderer': {
-        'name': 'renderer.tar.xz',
+        'name': renderer_name,
         'source_commit': engine_commit,
         'local_worktree_dirty': False,
         'architectures': ['64', '32'],
@@ -56,7 +58,7 @@ manifest = {
 }
 with zipfile.ZipFile(archive, 'w') as package:
     package.writestr('Mako/package.json', json.dumps(manifest))
-    package.write(renderer, 'Mako/bin/renderer.tar.xz')
+    package.write(renderer, f'Mako/bin/{renderer_name}')
     package.writestr('Mako/bin/runtime-a.flatpak', 'bundle a')
     if include_second == 'yes':
         package.writestr('Mako/bin/runtime-b.flatpak', 'bundle b')
@@ -83,6 +85,12 @@ fi
 make_candidate "$test_root/incomplete.zip" "$latest_commit" "$source_commit" no
 if "$fixture_repo/scripts/check-release-candidate.sh" "$test_root/incomplete.zip" > /dev/null 2>&1; then
   echo 'A ZIP without all Flatpak runtimes unexpectedly passed.' >&2
+  exit 1
+fi
+
+make_candidate "$test_root/host-builder.zip" "$latest_commit" "$source_commit" yes default
+if "$fixture_repo/scripts/check-release-candidate.sh" "$test_root/host-builder.zip" > /dev/null 2>&1; then
+  echo 'A ZIP from the default host builder unexpectedly passed.' >&2
   exit 1
 fi
 

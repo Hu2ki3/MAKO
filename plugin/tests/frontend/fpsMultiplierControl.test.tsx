@@ -21,7 +21,11 @@ vi.mock("@decky/ui", () => ({
     onChange: (option: { data: string; label: React.ReactNode }) => void;
   }) => (
     <button
-      data-testid="real-frame-priority-dropdown"
+      data-testid={
+        rgOptions[0]?.data === "auto"
+          ? "real-frame-priority-dropdown"
+          : "gamescope-vrr-dropdown"
+      }
       data-options={JSON.stringify(rgOptions.map((option) => option.data))}
       data-labels={JSON.stringify(rgOptions.map((option) => option.label))}
       onClick={() => onChange(rgOptions[2])}
@@ -239,12 +243,12 @@ describe("Frame Generation controls", () => {
     expect(onConfigChange).toHaveBeenCalledWith("performance_mode", true);
     expect(
       within(fixedMultiplierField as HTMLElement).getByText(
-        /Use 0x to pause or resume Frame Generation live without unloading its resources. Select 2x–5x for a constant generation ratio/,
+        /2x–5x sets a constant output ratio/,
       ),
     ).toBeTruthy();
     expect(
       screen.getByText(
-        /Enable Fractional Adaptive to keep more real frames, but test it per game/,
+        /Fractional Adaptive keeps more real frames. Test per game/,
       ),
     ).toBeTruthy();
     expect(
@@ -294,7 +298,7 @@ describe("Frame Generation controls", () => {
     ).toBeTruthy();
     expect(
       within(adaptiveMultiplierField as HTMLElement).getByText(
-        /^Use 0x to pause or resume Frame Generation live without unloading its resources. Otherwise this is/,
+        /interpolation ceiling, not a fixed ratio/,
       ).style.paddingBottom,
     ).toBe("2px");
     expect(
@@ -348,12 +352,17 @@ describe("Frame Generation controls", () => {
     ).toBe("true");
     expect(
       screen.getByText(
-        "Enable before starting the game. Loads and provisions MAKO Frame Generation. Turn it off when you only want Scaling or Shaders.",
+        /Enable before launch to load Frame Generation/,
       ),
     ).toBeTruthy();
     expect(screen.getByText("Adaptive Frame Generation")).toBeTruthy();
     expect(screen.getByText("Fractional Adaptive")).toBeTruthy();
     expect(screen.getByText("Real Frame Priority")).toBeTruthy();
+    expect(screen.getByText("Gamescope VRR")).toBeTruthy();
+    const vrr = screen.getByTestId("gamescope-vrr-dropdown");
+    expect(vrr.textContent).toBe("Follow Steam");
+    fireEvent.click(vrr);
+    expect(onConfigChange).toHaveBeenCalledWith("gamescope_vrr_mode", "off");
     expect(
       screen.getByText(
         "Automatic keeps Fractional Adaptive's current behavior. Base FPS Cap remains available.",
@@ -460,7 +469,7 @@ describe("Frame Generation controls", () => {
     );
     expect(
       screen.getByText(
-        "At a 120 FPS target, the estimated split is 80 real / 40 generated FPS (about 2:1) if the target is met. Actual rates vary. This overrides Base FPS Cap.",
+        "At a 120 FPS target: about 80 real / 40 generated FPS (2:1) if reached. Actual rates vary; this overrides Base FPS Cap.",
       ),
     ).toBeTruthy();
   });
@@ -550,7 +559,7 @@ describe("Frame Generation controls", () => {
     expect(screen.queryByText(/Maximum Adaptive Multiplier/)).toBeNull();
     expect(
       screen.queryByText(
-        /Use 0x to pause or resume Frame Generation live without unloading its resources/,
+        /0x pauses generation live without unloading resources/,
       ),
     ).toBeNull();
 

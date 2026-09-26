@@ -70,7 +70,7 @@ export function ModelWarning({
           <div style={{ marginTop: "8px" }}>
             {t(
               "MODEL_WARNING_UPDATE",
-              "Check for MAKO Decky updates, then apply any MAKO Renderer update and restart the game. If the problem persists, verify Lossless Scaling and collect diagnostics.",
+              "Apply available MAKO Decky and Renderer updates, then restart. If unresolved, verify Lossless Scaling files and collect diagnostics.",
             )}
           </div>
         </MakoInlineTip>

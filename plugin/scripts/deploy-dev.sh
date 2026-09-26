@@ -358,6 +358,10 @@ if [[ "$deploy_engine" == true || "$deploy_engine_32" == true ]]; then
     echo "Incremental engine builder not found: $engine_repo/scripts/build-steamos-dev.sh" >&2
     exit 1
   fi
+  if [[ ! -x "$engine_repo/scripts/mako-vrr-lease" ]]; then
+    echo "Gamescope VRR helper not found: $engine_repo/scripts/mako-vrr-lease" >&2
+    exit 1
+  fi
 
   engine_build_args=()
   if [[ "$deploy_engine" == true && "$deploy_engine_32" == true ]]; then
@@ -591,6 +595,11 @@ if [[ -n "$built_layer_32" ]]; then
   copy_file "$built_vkbasalt_library_32" "$installed_vkbasalt_library_32"
   copy_file "$built_vkbasalt_manifest_32" "$installed_vkbasalt_manifest_32"
   echo "Deployed incremental 32-bit Renderer and private vkBasalt layers."
+fi
+if [[ "$deploy_engine" == true || "$deploy_engine_32" == true ]]; then
+  copy_file "$engine_repo/scripts/mako-vrr-lease" \
+    "$HOME/.local/share/mako-render/bin/mako-vrr-lease"
+  echo "Deployed the Gamescope VRR launch helper."
 fi
 if [[ -n "$flatpak_archive" ]]; then
   for flatpak_bundle in "${flatpak_runtime_bundles[@]}"; do

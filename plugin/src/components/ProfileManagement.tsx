@@ -39,8 +39,8 @@ interface TextInputModalProps {
   title: string;
   description: string;
   defaultValue?: string;
-  okText?: string;
-  cancelText?: string;
+  okText: string;
+  cancelText: string;
   onOK: (value: string) => void;
   closeModal?: () => void;
 }
@@ -49,8 +49,8 @@ function TextInputModal({
   title,
   description,
   defaultValue = "",
-  okText = "OK",
-  cancelText = "Cancel",
+  okText,
+  cancelText,
   onOK,
   closeModal,
 }: TextInputModalProps) {
@@ -193,7 +193,7 @@ export function ProfileManagement({
         >
           {t(
             "PROFILE_HELP",
-            "Start a game and save its process once. MAKO selects saved profiles automatically; outside a game, the dropdown only chooses which profile to edit.",
+            "Save a game's process once for automatic profile selection. Outside a game, the dropdown selects the profile to edit.",
           )}
         </div>
       </MakoInfo>

@@ -103,6 +103,9 @@ int main() {
     expect(json.find("\"frame_generation_provisioned\":true") !=
             std::string::npos,
         "Frame Generation provisioning state missing");
+    expect(json.find("\"gamescope_vrr_mode\":\"follow-steam\"") !=
+            std::string::npos,
+        "Gamescope VRR preference missing from the requested profile");
     expect(json.find("\"required_generated_capacity\":4") !=
             std::string::npos,
         "requested capacity missing");

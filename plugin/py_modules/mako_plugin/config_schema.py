@@ -26,6 +26,7 @@ from shared_config import (
     FRAME_GENERATION_REFRESH_THRESHOLD_MAX,
     FRAME_GENERATION_REFRESH_THRESHOLD_MIN,
     FRAME_GENERATION_REFRESH_THRESHOLD_UI_MIN,
+    GAMESCOPE_VRR_MODE_VALUES,
     PROFILE_KIND_DEFAULT,
     PROFILE_KIND_GAME,
     PROFILE_KIND_MANUAL,
@@ -192,6 +193,12 @@ class ConfigurationManager:
         validated["adaptive_fractional_real_frame_priority"] = (
             fractional_priority
         )
+        vrr_mode = validated["gamescope_vrr_mode"].strip().lower()
+        if vrr_mode not in GAMESCOPE_VRR_MODE_VALUES:
+            raise ValueError(
+                "gamescope_vrr_mode must be 'follow-steam', 'on', or 'off'"
+            )
+        validated["gamescope_vrr_mode"] = vrr_mode
         if not (
             ADAPTIVE_MAX_MULTIPLIER_MIN
             <= validated["adaptive_max_multiplier"]
@@ -372,6 +379,7 @@ class ConfigurationManager:
                 f"target_fps = {config['target_fps']}",
                 f"adaptive_max_multiplier = {config['adaptive_max_multiplier']}",
                 f"adaptive_stable_cadence = {str(config['adaptive_stable_cadence']).lower()}",
+                f"gamescope_vrr_mode = {_toml_string(config['gamescope_vrr_mode'])}",
                 f"dynamic_cadence_recovery = {str(config['dynamic_cadence_recovery']).lower()}",
                 "dynamic_cadence_probe_interval_seconds = "
                 f"{config['dynamic_cadence_probe_interval_seconds']}",

@@ -123,7 +123,7 @@ export function AdvancedRenderingConfigurationGroup({
               )}
               description={t(
                 "CONFIG_DISABLE_MAKO_NEXT_LAUNCH_DESC",
-                "Troubleshooting only. Stops MAKO Renderer loading the next time the game starts. Use Frame Generation above to switch synthesis on or off.",
+                "For troubleshooting: skips MAKO Renderer on the next launch. Use Frame Generation above to toggle synthesis.",
               )}
               checked={config.disable_mako}
               onChange={(value) => onConfigChange(DISABLE_MAKO, value)}
@@ -138,7 +138,7 @@ export function AdvancedRenderingConfigurationGroup({
               )}
               description={t(
                 "CONFIG_FRAME_GENERATION_REFRESH_GUARD_DESC",
-                "Pauses frame generation when Gamescope confirms the current display is at or below the threshold, then resumes your selected mode above it. Does nothing when refresh feedback is unavailable.",
+                "Pauses generation at or below the chosen Gamescope refresh rate; resumes above it. Requires refresh feedback.",
               )}
               bottomSeparator={
                 config.frame_generation_refresh_threshold > 0

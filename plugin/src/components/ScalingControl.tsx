@@ -120,7 +120,7 @@ export function ScalingControl({
           description={
             t(
               "SCALING_ENABLED_DESC",
-              "Enable before starting the game. When off, scaling is fully disabled. Supports Lossless Scaling models and MAKO Scaler.",
+              "Enable before launch for Lossless Scaling or MAKO Scaler; off disables scaling.",
             )
           }
           checked={config.scaling_enabled}
@@ -155,7 +155,7 @@ export function ScalingControl({
                       <span style={{ whiteSpace: "pre-line" }}>
                         {t(
                           "SCALING_METHOD_COMPARISON_TIP",
-                          "How scaling works:\n1. In Steam, set Game Resolution to your display's maximum resolution (Steam Deck: 1280 × 800; Steam Machine: 3840 × 2160).\n2. In the game, choose a lower resolution, such as 480p, 720p, or more.\n3. Use a Scale Factor to enlarge the image. 2x doubles your resolution.\n\nReducing the resolution of the game and scaling it back can substantially increase performance, with an image-quality trade-off.",
+                          "How scaling works:\n1. In Steam, set Game Resolution to your display's maximum resolution (Steam Deck: 1280 × 800; Steam Machine: 3840 × 2160).\n2. In the game, choose a lower resolution, such as 480p, 720p, or more.\n3. Set Scale Factor to enlarge the image. 2x targets twice the input width and height (640×360 → 1280×720).\n\nReducing the resolution of the game and scaling it back can substantially increase performance, with an image-quality trade-off.",
                         )}
                       </span>
                     </MakoInlineTip>
@@ -182,7 +182,7 @@ export function ScalingControl({
                       )
                     : t(
                         "SCALING_LS1_UNAVAILABLE",
-                        "The selected LS1 model could not be loaded during the availability check. MAKO Scaler is used automatically if LS1 cannot load. Your LS1 selection is preserved.",
+                        "LS1 failed the availability check. MAKO Scaler takes over if LS1 cannot load; your selection stays saved.",
                       )}
                 </MakoInlineTip>
               )}
@@ -208,7 +208,7 @@ export function ScalingControl({
                       <MakoInlineTip tone="warning">
                         {t(
                           "SCALING_SUPERSAMPLING_WARNING",
-                          "Supersampling is enabled. Where a Gamescope output limit applies, MAKO may exceed it for a sharper downsampled image.",
+                          "With Supersampling on, MAKO may exceed an applicable Gamescope output limit for sharper downsampling.",
                         )}
                       </MakoInlineTip>
                     )}
@@ -231,7 +231,7 @@ export function ScalingControl({
                   <span style={{ display: "block", paddingTop: "3px" }}>
                     {t(
                       "SCALING_FACTOR_DESC",
-                      "Sets the output-to-input size ratio for every method. With a fixed output size, higher values lower the source resolution. When the game controls the window size, lower its resolution in the game first; higher factors enlarge MAKO's output and can increase GPU cost.",
+                      "2x targets twice the game's render width and height (640×360 → 1280×720). With fixed output, MAKO requests a smaller game image. If the game sets window size, lower its resolution in-game first; MAKO enlarges output instead, within display and GPU limits.",
                     )}
                   </span>
                   {factorLimited && (
@@ -281,7 +281,7 @@ export function ScalingControl({
                 label={`${t("SCALING_SHARPNESS", "Scaling Sharpness")} (${Math.round(config.scaling_sharpness * 100)}%)`}
                 description={t(
                   "SCALING_SHARPNESS_DESC",
-                  "For MAKO, applies this 0–100% multiplier to its 3x sharpening baseline. For LS1, selects one of five learned sharpness variants.",
+                  "MAKO: 0–100% of its 3x sharpening baseline. LS1: one of five learned sharpness variants.",
                 )}
                 value={config.scaling_sharpness}
                 min={SCALING_SHARPNESS_MIN}

@@ -41,7 +41,7 @@ export function ExternalToolsConfigurationGroup({
               }
               description={t(
                 "CONFIG_ENABLE_MANGOHUD_DESC",
-                "Uses the host-installed MangoHud and your existing MangoHud configuration. See the expert guide for per-game environment overrides.",
+                "Uses installed MangoHud and its settings; see expert guide for per-game overrides.",
               )}
               checked={
                 config.external_vulkan_layer === EXTERNAL_VULKAN_LAYER_MANGOHUD

@@ -67,6 +67,7 @@ decky_renderer_relative_paths=(
     ".local/share/mako-render/vkbasalt-shaders/Vibrance.fx"
     ".local/share/mako-render/vkbasalt-shaders/Vignette.fx"
     ".local/share/mako-render/bin/mako-cli"
+    ".local/share/mako-render/bin/mako-vrr-lease"
     ".local/share/mako-render/installed-engine.json"
     ".local/share/mako-render/active-renderer.json"
     ".local/bin/mako-run"

@@ -96,6 +96,7 @@ void test_multiplier_limits() {
     require_property("maximum_adaptive_max_multiplier", "uint", false, true);
     require_property("frame_generation_provisioned", "bool", true, false);
     require_property("frame_generation_enabled", "bool", true, false);
+    require_property("gamescope_vrr_mode", "QString", true, false);
     require_property("frame_generation_factor_index", "uint", true, false);
 
     ls::GameConf configuration;
@@ -238,10 +239,13 @@ void test_feature_group_order_and_ownership() {
         frame_generation_group_start,
         group_start - frame_generation_group_start
     );
-    require(frame_generation_group.count(QStringLiteral("GroupEntry {")) == 13 &&
+    require(frame_generation_group.count(QStringLiteral("GroupEntry {")) == 14 &&
             frame_generation_group.count(QStringLiteral(
-                "visible: backend.frame_generation_provisioned")) == 12,
+                "visible: backend.frame_generation_provisioned")) == 13,
         "Frame Generation must retain its provisioning switch while keeping live controls visible at 0x");
+    require(frame_generation_group.contains(QStringLiteral(
+                "title: t.gamescopeVrrMode")),
+        "Frame Generation must expose its Gamescope VRR choice");
     require(frame_generation_group.contains(QStringLiteral(
                 "checked: backend.frame_generation_provisioned")) &&
             frame_generation_group.contains(QStringLiteral(

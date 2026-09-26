@@ -296,7 +296,7 @@ export function RuntimeStatusCard({
               >
                 {t(
                   "LIVE_STATUS_WAITING_DESC",
-                  "Live status is unavailable, but MAKO may still be active. Some games and emulators may not report live metrics. Check Frame Generation or Scaling manually.",
+                  "Live metrics unavailable; MAKO may still work. Some games/emulators may not report them. Check Frame Generation or Scaling manually.",
                 )}
               </div>
             ) : (

@@ -7,6 +7,10 @@ description: Commit and push coordinated work across the local MAKO, vkBasalt fo
 
 Commit and push the four coordinated repositories only after a complete read-only preflight. This workflow is not atomic across repositories, so eliminate avoidable failures before the first commit or push and report any partial completion precisely.
 
+Execution boundary: Git inspection, commits, and pushes run on the host. This skill does not start Docker or Podman; a selected repository validation command may use a container according to that repository's own instructions.
+
+Inspect and operate on the actual host (`exec_command` with `sandbox_permissions: "require_escalated"` in Codex): the default isolated shell may hide sibling checkouts, their build tools, or network access. Do not infer that a checkout or prerequisite is missing from a sandbox-only failure.
+
 ## Repository map
 
 Resolve the MAKO root with `git rev-parse --show-toplevel`, then resolve these sibling checkouts from its parent directory:

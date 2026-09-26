@@ -68,7 +68,7 @@ export function PerformanceConfigurationGroup({
           label={`${t("CONFIG_FLOW_SCALE", "Flow Scale")} (${Math.round((config.ultra_performance ? ULTRA_PERFORMANCE_FLOW_SCALE : config.flow_scale) * 100)}%)`}
           description={t(
             "CONFIG_FLOW_SCALE_DESC",
-            "Controls the internal motion-estimation resolution used only for Frame Generation. Lower values reduce GPU work; higher values favour quality.",
+            "Frame Generation motion-estimation resolution. Lower saves GPU work; higher favors quality.",
           )}
           value={
             config.ultra_performance

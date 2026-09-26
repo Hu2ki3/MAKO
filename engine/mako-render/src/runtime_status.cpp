@@ -254,6 +254,8 @@ namespace {
         else
             stream << "null";
         stream << ",\"multiplier\":" << profile.multiplier
+               << ",\"gamescope_vrr_mode\":"
+               << jsonString(ls::gamescopeVrrModeName(profile.gamescope_vrr_mode))
                << ",\"frame_generation_provisioned\":"
                << profile.frame_generation_provisioned
                << ",\"frame_generation_enabled\":"

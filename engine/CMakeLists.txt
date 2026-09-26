@@ -76,6 +76,15 @@ option(MAKO_INSTALL_DEVELOP    "Install development libraries and headers"      
 option(MAKO_INSTALL_XDG_FILES  "Install the application icon and desktop files" OFF)
 option(MAKO_ENABLE_SANITIZERS  "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(MAKO_REQUIRE_NATIVE_PACKAGE_HEADERS "Require the shared package Vulkan header baseline" OFF)
+set(MAKO_VULKAN_HEADERS_INCLUDE_DIR "" CACHE PATH "Optional Vulkan-Headers include directory for direct builds")
+if(MAKO_VULKAN_HEADERS_INCLUDE_DIR)
+    if(NOT EXISTS "${MAKO_VULKAN_HEADERS_INCLUDE_DIR}/vulkan/vulkan_core.h")
+        message(FATAL_ERROR
+            "MAKO_VULKAN_HEADERS_INCLUDE_DIR does not contain Vulkan-Headers: "
+            "${MAKO_VULKAN_HEADERS_INCLUDE_DIR}")
+    endif()
+    include_directories(BEFORE SYSTEM "${MAKO_VULKAN_HEADERS_INCLUDE_DIR}")
+endif()
 set(MAKO_LAYER_LIBRARY_PATH libmako-render.so CACHE STRING "Change where Vulkan searches for the layer library")
 set(MAKO_SCALING_LAYER_LIBRARY_PATH libmako-render-scaling.so CACHE STRING "Change where Vulkan searches for the isolated spatial-scaling layer library")
 set(MAKO_LAYER_MANIFEST_SUFFIX "" CACHE STRING "Suffix for the installed Vulkan layer manifest filename")
@@ -83,7 +92,9 @@ option(MAKO_TESTING_RENDERDOC  "Enable RenderDoc integration for testing purpose
 # === READ HERE FOR BUILD OPTIONS ===
 
 if(MAKO_BUILD_VK_LAYER)
-    install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/scripts/mako-launch"
+    install(PROGRAMS
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/mako-launch"
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/mako-vrr-lease"
         DESTINATION "${CMAKE_INSTALL_BINDIR}")
 endif()
 
@@ -98,6 +109,12 @@ if(BUILD_TESTING AND UNIX)
             "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test-mako-launch.sh"
             "${CMAKE_CURRENT_SOURCE_DIR}/scripts/mako-launch")
     set_tests_properties(standalone-launcher PROPERTIES
+        LABELS "portable-policy")
+
+    add_test(NAME gamescope-vrr-lease
+        COMMAND "${MAKO_PYTHON3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test-mako-vrr-lease.py")
+    set_tests_properties(gamescope-vrr-lease PROPERTIES
         LABELS "portable-policy")
 
     add_test(NAME mako-gym-bridge-contract

@@ -134,7 +134,7 @@ function WelcomeNotice({ separated }: { separated: boolean }) {
             >
               {t(
                 "WELCOME_ENJOY",
-                "Every game is different. Find the best settings that work for you and enjoy playing. MAKO keeps improving with every release, so keep an eye on the release page!",
+                "Settings vary by game. Test what works for you; check the release page for MAKO updates.",
               )}
             </div>
           </>
@@ -185,6 +185,8 @@ export function ContentNotices({
   const [showDevelopmentDetails, setShowDevelopmentDetails] = useState(false);
   const hasDevelopmentNotice = Boolean(developmentBuildInfo);
   const hasRunningAppNotice = Boolean(mainRunningApp);
+  const developmentDeployed = t("DEVELOPMENT_DEPLOYED", "deployed");
+  const developmentUnchanged = t("DEVELOPMENT_UNCHANGED", "unchanged");
 
   return (
     <>
@@ -215,7 +217,11 @@ export function ContentNotices({
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: "bold" }}>
-                  🧪 Local development deployment
+                  🧪{" "}
+                  {t(
+                    "DEVELOPMENT_DEPLOYMENT_TITLE",
+                    "Local development deployment",
+                  )}
                 </div>
                 <div
                   style={{
@@ -233,7 +239,7 @@ export function ContentNotices({
                   {developmentBuildInfo.engine ? (
                     <code>{developmentBuildInfo.engine.commit}</code>
                   ) : (
-                    "unchanged"
+                    developmentUnchanged
                   )}
                   {developmentBuildInfo.engine?.dirty ? "*" : ""}
                 </div>
@@ -249,7 +255,9 @@ export function ContentNotices({
                 }}
                 onClick={() => setShowDevelopmentDetails((current) => !current)}
               >
-                {showDevelopmentDetails ? "Hide" : "Details"}
+                {showDevelopmentDetails
+                  ? t("DEVELOPMENT_HIDE", "Hide")
+                  : t("DEVELOPMENT_DETAILS", "Details")}
               </DialogButton>
             </div>
             {showDevelopmentDetails && (
@@ -265,7 +273,9 @@ export function ContentNotices({
                 }}
               >
                 <div style={{ color: "#d6ecff" }}>
-                  <span style={{ color: "#83bff0" }}>Deployed</span>{" "}
+                  <span style={{ color: "#83bff0" }}>
+                    {t("DEVELOPMENT_DEPLOYED_AT", "Deployed")}
+                  </span>{" "}
                   {new Date(developmentBuildInfo.generatedAt).toLocaleString()}
                 </div>
                 <div>
@@ -273,20 +283,23 @@ export function ContentNotices({
                     MAKO Decky
                   </div>
                   <div>
-                    Commit: <code>{developmentBuildInfo.plugin.commit}</code>
-                    {developmentBuildInfo.plugin.dirty ? " + local edits" : ""}
+                    {t("DEVELOPMENT_COMMIT", "Commit")}:{" "}
+                    <code>{developmentBuildInfo.plugin.commit}</code>
+                    {developmentBuildInfo.plugin.dirty
+                      ? ` ${t("DEVELOPMENT_LOCAL_EDITS", "+ local edits")}`
+                      : ""}
                   </div>
                   <div>
-                    Frontend:{" "}
+                    {t("DEVELOPMENT_FRONTEND", "Frontend")}:{" "}
                     {developmentBuildInfo.plugin.frontendDeployed
-                      ? "deployed"
-                      : "unchanged"}
+                      ? developmentDeployed
+                      : developmentUnchanged}
                   </div>
                   <div>
-                    Backend:{" "}
+                    {t("DEVELOPMENT_BACKEND", "Backend")}:{" "}
                     {developmentBuildInfo.plugin.backendDeployed
-                      ? "deployed"
-                      : "unchanged"}
+                      ? developmentDeployed
+                      : developmentUnchanged}
                   </div>
                 </div>
                 <div>
@@ -296,17 +309,17 @@ export function ContentNotices({
                   {developmentBuildInfo.engine ? (
                     <>
                       <div>
-                        Commit:{" "}
+                        {t("DEVELOPMENT_COMMIT", "Commit")}:{" "}
                         <code>{developmentBuildInfo.engine.commit}</code>
                         {developmentBuildInfo.engine.dirty
-                          ? " + local edits"
+                          ? ` ${t("DEVELOPMENT_LOCAL_EDITS", "+ local edits")}`
                           : ""}
                       </div>
                       <div>
-                        64-bit layer:{" "}
+                        {t("DEVELOPMENT_LAYER_64", "64-bit layer")}:{" "}
                         {developmentBuildInfo.engine.layer64Sha256 ? (
                           <>
-                            deployed · SHA-256{" "}
+                            {developmentDeployed} · SHA-256{" "}
                             <code>
                               {developmentBuildInfo.engine.layer64Sha256.slice(
                                 0,
@@ -315,14 +328,14 @@ export function ContentNotices({
                             </code>
                           </>
                         ) : (
-                          "unchanged"
+                          developmentUnchanged
                         )}
                       </div>
                       <div>
-                        32-bit layer:{" "}
+                        {t("DEVELOPMENT_LAYER_32", "32-bit layer")}:{" "}
                         {developmentBuildInfo.engine.layer32Sha256 ? (
                           <>
-                            deployed · SHA-256{" "}
+                            {developmentDeployed} · SHA-256{" "}
                             <code>
                               {developmentBuildInfo.engine.layer32Sha256.slice(
                                 0,
@@ -331,15 +344,15 @@ export function ContentNotices({
                             </code>
                           </>
                         ) : (
-                          "unchanged"
+                          developmentUnchanged
                         )}
                       </div>
                       <div>
-                        Flatpak bundles:{" "}
+                        {t("DEVELOPMENT_FLATPAK_BUNDLES", "Flatpak bundles")}:{" "}
                         {developmentBuildInfo.engine.flatpakArchiveSha256 ? (
                           <>
-                            {SUPPORTED_FLATPAK_RUNTIME_VERSION_LIST} deployed ·
-                            SHA-256{" "}
+                            {SUPPORTED_FLATPAK_RUNTIME_VERSION_LIST}{" "}
+                            {developmentDeployed} · SHA-256{" "}
                             <code>
                               {developmentBuildInfo.engine.flatpakArchiveSha256.slice(
                                 0,
@@ -348,12 +361,17 @@ export function ContentNotices({
                             </code>
                           </>
                         ) : (
-                          "unchanged"
+                          developmentUnchanged
                         )}
                       </div>
                     </>
                   ) : (
-                    <div>Unchanged by this deployment</div>
+                    <div>
+                      {t(
+                        "DEVELOPMENT_UNCHANGED_BY_DEPLOYMENT",
+                        "Unchanged by this deployment",
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -434,7 +452,7 @@ export function ContentNotices({
                 )}`}{" "}
               {t(
                 "CONTENT_ENGINE_UPDATE_DESC",
-                "Reinstall MAKO Renderer to apply the version bundled with this plugin. Then update the matching runtime extensions for prepared Flatpak apps.",
+                "Reinstall bundled MAKO Renderer, then update runtime extensions for prepared Flatpaks.",
               )}
             </MakoInfo>
             <div className="Mako_BrandButton">

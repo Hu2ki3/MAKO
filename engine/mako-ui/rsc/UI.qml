@@ -438,6 +438,19 @@ ApplicationWindow {
                     }
 
                     GroupEntry {
+                        title: t.gamescopeVrrMode
+                        description: t.gamescopeVrrModeDesc
+                        visible: backend.frame_generation_provisioned
+
+                        ComboBox {
+                            Layout.fillWidth: true
+                            model: [t.gamescopeVrrFollowSteam, t.gamescopeVrrOn, t.gamescopeVrrOff]
+                            currentIndex: ["follow-steam", "on", "off"].indexOf(backend.gamescope_vrr_mode)
+                            onActivated: index => backend.gamescope_vrr_mode = ["follow-steam", "on", "off"][index]
+                        }
+                    }
+
+                    GroupEntry {
                         title: t.performanceMode
                         description: t.performanceModeDesc
                         visible: backend.frame_generation_provisioned

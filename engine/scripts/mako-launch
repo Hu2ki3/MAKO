@@ -352,4 +352,15 @@ else
 fi
 unset mako_vkbasalt_enabled
 
+if [[ -n "${GAMESCOPE_WAYLAND_DISPLAY:-}" &&
+        ( -z "${WAYLAND_DISPLAY:-}" ||
+          "$WAYLAND_DISPLAY" == "$GAMESCOPE_WAYLAND_DISPLAY" ) ]]; then
+    mako_vrr_helper="$(dirname -- "${BASH_SOURCE[0]}")/mako-vrr-lease"
+    if [[ -x "$mako_vrr_helper" ]]; then
+        export MAKO_VRR_LEASE_TOKEN="$$-$RANDOM-$RANDOM"
+        "$mako_vrr_helper" --start "$$" "$MAKO_VRR_LEASE_TOKEN" || :
+    fi
+    unset mako_vrr_helper
+fi
+
 exec "$@"

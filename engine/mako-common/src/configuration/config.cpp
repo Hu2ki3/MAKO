@@ -53,6 +53,7 @@ adaptive_fractional_real_frame_priority = 'auto'
 target_fps = 120
 adaptive_max_multiplier = 3
 adaptive_stable_cadence = true
+gamescope_vrr_mode = 'follow-steam'
 dynamic_cadence_recovery = false
 dynamic_cadence_probe_interval_seconds = 2
 ultra_performance = false
@@ -104,6 +105,7 @@ ConfigFile::ConfigFile() {
         .target_fps = GameConfDefaults::targetFps,
         .adaptive_max_multiplier = GameConfDefaults::adaptiveMaxMultiplier,
         .adaptive_stable_cadence = GameConfDefaults::adaptiveStableCadence,
+        .gamescope_vrr_mode = GameConfDefaults::gamescopeVrrMode,
         .dynamic_cadence_recovery = GameConfDefaults::dynamicCadenceRecovery,
         .dynamic_cadence_probe_interval_seconds =
             GameConfDefaults::dynamicCadenceProbeIntervalSeconds,
@@ -161,6 +163,11 @@ namespace {
         if (const auto method = scalingMethodFromName(value))
             return *method;
         throw ls::error("unknown scaling method: " + value);
+    }
+    GamescopeVrrMode gamescopeVrrModeFromString(const std::string& value) {
+        if (const auto mode = gamescopeVrrModeFromName(value))
+            return *mode;
+        throw ls::error("unknown Gamescope VRR mode: " + value);
     }
     AdaptiveFractionalRealFramePriority
     adaptiveFractionalRealFramePriorityFromString(const std::string& value) {
@@ -347,6 +354,11 @@ namespace {
             .adaptive_stable_cadence = tbl["adaptive_stable_cadence"].value_or(
                 GameConfDefaults::adaptiveStableCadence
             ),
+            .gamescope_vrr_mode = gamescopeVrrModeFromString(
+                tbl["gamescope_vrr_mode"].value_or<std::string>(
+                    gamescopeVrrModeName(GameConfDefaults::gamescopeVrrMode)
+                )
+            ),
             .dynamic_cadence_recovery = tbl["dynamic_cadence_recovery"].value_or(
                 GameConfDefaults::dynamicCadenceRecovery
             ),
@@ -421,6 +433,7 @@ namespace {
             .target_fps = GameConfDefaults::targetFps,
             .adaptive_max_multiplier = GameConfDefaults::adaptiveMaxMultiplier,
             .adaptive_stable_cadence = GameConfDefaults::adaptiveStableCadence,
+            .gamescope_vrr_mode = GameConfDefaults::gamescopeVrrMode,
             .dynamic_cadence_recovery = GameConfDefaults::dynamicCadenceRecovery,
             .dynamic_cadence_probe_interval_seconds =
                 GameConfDefaults::dynamicCadenceProbeIntervalSeconds,
@@ -499,6 +512,13 @@ namespace {
         const char* adaptive_stable_cadence = std::getenv("MAKO_ADAPTIVE_STABLE_CADENCE");
         if (adaptive_stable_cadence)
             conf.adaptive_stable_cadence = std::string(adaptive_stable_cadence) != "0";
+        const char* gamescope_vrr_mode = std::getenv("MAKO_GAMESCOPE_VRR_MODE");
+        if (gamescope_vrr_mode) {
+            const auto mode = gamescopeVrrModeFromName(gamescope_vrr_mode);
+            if (!mode) throw ls::error("unknown Gamescope VRR mode: " +
+                std::string(gamescope_vrr_mode));
+            conf.gamescope_vrr_mode = *mode;
+        }
         const char* dynamic_cadence_recovery =
             std::getenv("MAKO_DYNAMIC_CADENCE_RECOVERY");
         if (dynamic_cadence_recovery) {
@@ -617,6 +637,7 @@ void ConfigFile::write(const std::filesystem::path& path) const {
         profile.insert("target_fps", static_cast<int64_t>(conf.target_fps));
         profile.insert("adaptive_max_multiplier", static_cast<int64_t>(conf.adaptive_max_multiplier));
         profile.insert("adaptive_stable_cadence", conf.adaptive_stable_cadence);
+        profile.insert("gamescope_vrr_mode", gamescopeVrrModeName(conf.gamescope_vrr_mode));
         profile.insert("dynamic_cadence_recovery", conf.dynamic_cadence_recovery);
         profile.insert(
             "dynamic_cadence_probe_interval_seconds",

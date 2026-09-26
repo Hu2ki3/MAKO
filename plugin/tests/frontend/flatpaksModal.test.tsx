@@ -342,7 +342,7 @@ describe("Flatpak application preparation", () => {
     ).toBeTruthy();
     expect(
       screen.getByText(
-        /Heroic, Lutris, and EmuDeck have separate steps in the launcher setup guide/,
+        /Heroic, Lutris, and EmuDeck use the launcher guide/,
       ),
     ).toBeTruthy();
 

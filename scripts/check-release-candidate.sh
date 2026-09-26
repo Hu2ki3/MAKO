@@ -76,6 +76,9 @@ if (!renderer.architectures?.includes('64') || !renderer.architectures?.includes
     !renderer.host_architectures?.includes('x86_64')) {
   throw new Error('The candidate must contain 64-bit and 32-bit x86 Renderer layers');
 }
+if (!/\.portable-linux\.tar\.xz$/.test(renderer.name)) {
+  throw new Error('The candidate must use the portable native Renderer builder');
+}
 process.stdout.write(renderer.name);
 JS
 )"

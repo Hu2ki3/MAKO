@@ -70,6 +70,7 @@ namespace {
             left.target_fps == right.target_fps &&
             left.adaptive_max_multiplier == right.adaptive_max_multiplier &&
             left.adaptive_stable_cadence == right.adaptive_stable_cadence &&
+            left.gamescope_vrr_mode == right.gamescope_vrr_mode &&
             left.dynamic_cadence_recovery == right.dynamic_cadence_recovery &&
             left.dynamic_cadence_probe_interval_seconds ==
                 right.dynamic_cadence_probe_interval_seconds &&
@@ -141,6 +142,8 @@ int main() {
                 ls::GameConfDefaults::adaptiveMaxMultiplier &&
             defaults.adaptive_stable_cadence ==
                 ls::GameConfDefaults::adaptiveStableCadence &&
+            defaults.gamescope_vrr_mode ==
+                ls::GameConfDefaults::gamescopeVrrMode &&
             defaults.dynamic_cadence_recovery ==
                 ls::GameConfDefaults::dynamicCadenceRecovery &&
             defaults.dynamic_cadence_probe_interval_seconds ==
@@ -420,6 +423,28 @@ adaptive_fractional_real_frame_priority = "maximum"
     }
     expect(invalidPriorityRejected,
         "Unknown Fractional real-frame priorities must be rejected");
+
+    const auto vrrPath = directory / "gamescope-vrr.toml";
+    writeText(vrrPath, R"(version = 2
+[[profile]]
+gamescope_vrr_mode = "off"
+)");
+    const ls::ConfigFile vrrConfiguration(vrrPath);
+    expect(vrrConfiguration.profiles().front().gamescope_vrr_mode ==
+            ls::GamescopeVrrMode::Off,
+        "Gamescope VRR mode did not preserve the off token");
+    const auto invalidVrrPath = directory / "invalid-gamescope-vrr.toml";
+    writeText(invalidVrrPath, R"(version = 2
+[[profile]]
+gamescope_vrr_mode = "automatic"
+)");
+    bool invalidVrrRejected = false;
+    try {
+        static_cast<void>(ls::ConfigFile(invalidVrrPath));
+    } catch (const std::exception&) {
+        invalidVrrRejected = true;
+    }
+    expect(invalidVrrRejected, "Unknown Gamescope VRR modes must be rejected");
 
     for (const std::string_view invalidInterval : {"0.09", "4"}) {
         const auto invalidIntervalPath = directory /

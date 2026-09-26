@@ -24,6 +24,7 @@ from py_modules.mako_plugin.constants import (
     SPATIAL_SCALING_LAYER_ENABLE_ENV,
     SPATIAL_SCALING_LAYER_NAME,
     SPATIAL_SCALING_LIB_FILENAME,
+    VRR_LEASE_FILENAME,
     VKBASALT_LIB_FILENAME,
     VKBASALT_MANIFEST_FILENAME_32,
     VKBASALT_MANIFEST_FILENAME_64,
@@ -116,6 +117,7 @@ def _installer_archive_members() -> tuple[set[str], set[str]]:
         "VKBASALT_LIB_FILENAME": VKBASALT_LIB_FILENAME,
         "VKBASALT_MANIFEST_FILENAME_64": VKBASALT_MANIFEST_FILENAME_64,
         "VKBASALT_MANIFEST_FILENAME_32": VKBASALT_MANIFEST_FILENAME_32,
+        "VRR_LEASE_FILENAME": VRR_LEASE_FILENAME,
     }
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Dict):
@@ -191,6 +193,7 @@ class PathAndPackageContractTests(unittest.TestCase):
     def test_installer_archive_members_match_both_package_gates(self):
         required, optional_32bit = _installer_archive_members()
         expected_required = {
+            f"bin/{VRR_LEASE_FILENAME}",
             f"lib/{LIB_FILENAME}",
             f"share/vulkan/implicit_layer.d/{JSON_FILENAME}",
             f"lib/{SPATIAL_SCALING_LIB_FILENAME}",
@@ -410,6 +413,13 @@ class PathAndPackageContractTests(unittest.TestCase):
         self.assertIn(
             f'current_path() / "{LOSSLESS_DLL_NAME}"',
             renderer_paths,
+        )
+
+    def test_host_deployment_refreshes_the_gamescope_vrr_helper(self):
+        script = _read(PLUGIN_DEPLOY_SCRIPT)
+        self.assertIn('copy_file "$engine_repo/scripts/mako-vrr-lease"', script)
+        self.assertIn(
+            '"$HOME/.local/share/mako-render/bin/mako-vrr-lease"', script,
         )
 
     def test_decky_slug_listing_and_developer_aliases_match_independent_tools(self):

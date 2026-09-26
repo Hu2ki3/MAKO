@@ -145,7 +145,8 @@ Run the installer again to update. See the <a href="engine/README.md#direct-linu
 
 ## Documentation
 
-- <a href="plugin/docs/CONFIGURATION.md" target="_blank" rel="noopener noreferrer">Configuration</a>: controls, profiles, runtime boundaries, and compatibility.
+- <a href="plugin/docs/CONFIGURATION.md" target="_blank" rel="noopener noreferrer">MAKO Decky configuration</a>: panel controls, profiles, runtime boundaries, and compatibility.
+- <a href="engine/docs/CONFIGURATION.md" target="_blank" rel="noopener noreferrer">MAKO Renderer configuration</a>: Qt controls, profile settings, and advanced configuration.
 - <a href="engine/README.md" target="_blank" rel="noopener noreferrer">MAKO Renderer</a>: direct installation, usage, builds, and architecture guides.
 - <a href="plugin/docs/TROUBLESHOOTING.md" target="_blank" rel="noopener noreferrer">Troubleshooting</a> and <a href="COLLECT_DIAGNOSTICS.md" target="_blank" rel="noopener noreferrer">diagnostics</a>: activation, presentation problems, and private reports.
 - <a href="TESTING.md" target="_blank" rel="noopener noreferrer">Testing</a> and <a href="HOW_TO_RELEASE.md" target="_blank" rel="noopener noreferrer">releases</a>: contributor validation and publication.

@@ -216,15 +216,15 @@ void test_scaling_catalogs(const QByteArray& catalog, const QString& settings_fi
     require(english.value(QStringLiteral("maxAdaptiveMultiplierDesc")).toString()
             .contains(QStringLiteral("0x pauses generation live")) &&
             english.value(QStringLiteral("maxAdaptiveMultiplierDesc")).toString()
-            .contains(QStringLiteral("interpolation ceiling")) &&
+            .contains(QStringLiteral("Adaptive's ceiling, not a fixed ratio")) &&
             english.value(QStringLiteral("maxAdaptiveMultiplierDesc")).toString()
-            .contains(QStringLiteral("only as high as needed to reach Target FPS")),
+            .contains(QStringLiteral("only as high as needed for Target FPS")),
         "English Adaptive multiplier help does not explain its live choices");
     require(english.value(QStringLiteral("scalingMethod")).toString() ==
             QStringLiteral("Scaling Method"),
         "English scaling method has an unexpected label");
     require(english.value(QStringLiteral("scalingEnabledDesc")).toString() ==
-            QStringLiteral("Enable before starting the game. When off, scaling is fully disabled. Supports Lossless Scaling models and MAKO Scaler."),
+            QStringLiteral("Enable before launch for Lossless Scaling or MAKO Scaler; off disables scaling."),
         "English scaling help does not match the Decky guidance");
     require(english.value(QStringLiteral("scalingMethodDesc")).toString() ==
             QStringLiteral("Choose the scaling model. You can change it while the game is running."),
@@ -233,15 +233,21 @@ void test_scaling_catalogs(const QByteArray& catalog, const QString& settings_fi
             QStringLiteral("Scale Factor"),
         "English scale-factor label does not match Decky");
     require(english.value(QStringLiteral("scalingFactorDesc")).toString()
+                .contains(QStringLiteral("640×360 → 1280×720")) &&
+            english.value(QStringLiteral("scalingFactorDesc")).toString()
+                .contains(QStringLiteral("With fixed output")) &&
+            english.value(QStringLiteral("scalingFactorDesc")).toString()
+                .contains(QStringLiteral("If the game sets window size")) &&
+            english.value(QStringLiteral("scalingFactorDesc")).toString()
                 .contains(QStringLiteral("try Windowed mode")) &&
             english.value(QStringLiteral("scalingFactorDesc")).toString()
                 .contains(QStringLiteral("fullscreen or borderless")),
         "English scale-factor help does not explain the display-sized input workaround");
     require(english.value(QStringLiteral("scalingSharpnessDesc")).toString() ==
-            QStringLiteral("For MAKO, applies this 0–100% multiplier to its 3x sharpening baseline. For LS1, selects one of five learned sharpness variants."),
+            QStringLiteral("MAKO: 0–100% of its 3x sharpening baseline. LS1: one of five learned sharpness variants."),
         "English sharpening help does not describe the MAKO baseline");
     require(english.value(QStringLiteral("flowScaleDesc")).toString() ==
-            QStringLiteral("Controls the internal motion-estimation resolution used only for Frame Generation. Lower values reduce GPU work; higher values favour quality."),
+            QStringLiteral("Frame Generation motion-estimation resolution. Lower saves GPU work; higher favors quality."),
         "English Flow Scale help does not match the Frame Generation-only guidance");
     require(english.value(QStringLiteral("fractionalAdaptive")).toString() ==
             QStringLiteral("Fractional Adaptive"),

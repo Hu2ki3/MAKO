@@ -330,6 +330,7 @@ required_paths=(
     "bin/mako-diagnostics" \
     "bin/mako-installer" \
     "bin/mako-launch" \
+    "bin/mako-vrr-lease" \
     "bin/mako-ui" \
     "lib/libmako-render.so" \
     "lib/libmako-render-scaling.so" \

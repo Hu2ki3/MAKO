@@ -54,6 +54,9 @@ if(MAKO_BUILD_VK_LAYER)
             set(header_version "${CMAKE_MATCH_2}.${CMAKE_MATCH_3}.${CMAKE_MATCH_4}")
             set(header_version_arguments "${CMAKE_MATCH_2}, ${CMAKE_MATCH_3}, ${CMAKE_MATCH_4}")
             set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+            if(MAKO_VULKAN_HEADERS_INCLUDE_DIR)
+                set(CMAKE_REQUIRED_INCLUDES "${MAKO_VULKAN_HEADERS_INCLUDE_DIR}")
+            endif()
             unset(MAKO_NATIVE_PACKAGE_HEADERS_SUPPORTED CACHE)
             check_cxx_source_compiles("
                 #include \"${CMAKE_CURRENT_SOURCE_DIR}/src/pnext_chain.hpp\"
@@ -74,7 +77,8 @@ if(MAKO_BUILD_VK_LAYER)
                     "MAKO Renderer packages require Vulkan headers "
                     "${header_version} or newer with VK_KHR_present_id2 and "
                     "VK_EXT_present_timing. Use the pinned headers through "
-                    "scripts/package-local.sh (MAKO_PORTABLE_PACKAGE=1) or "
+                    "scripts/build-steamos-dev.sh, "
+                    "scripts/package-local.sh (MAKO_PORTABLE_PACKAGE=1), or "
                     "scripts/package-flatpaks.sh; "
                     "do not bypass this check. See the CMake compile log.")
             endif()

@@ -157,7 +157,7 @@ describe("Scaling controls", () => {
           .getAttribute("data-selected"),
       ).toBe(method);
       expect(
-        screen.getByText(/selected LS1 model could not be loaded/),
+        screen.getByText(/LS1 failed the availability check/),
       ).toBeTruthy();
       expect(onConfigChange).not.toHaveBeenCalled();
       expect(saved.scaling_method).toBe(method);
@@ -231,7 +231,7 @@ describe("Scaling controls", () => {
         .getAttribute("data-selected"),
     ).toBe("ls1-performance");
     expect(
-      screen.getByText(/selected LS1 model could not be loaded/),
+      screen.getByText(/LS1 failed the availability check/),
     ).toBeTruthy();
     rerender(
       <ScalingControl
@@ -240,7 +240,7 @@ describe("Scaling controls", () => {
       />,
     );
     expect(
-      screen.queryByText(/selected LS1 model could not be loaded/),
+      screen.queryByText(/LS1 failed the availability check/),
     ).toBeNull();
   });
 
@@ -308,19 +308,20 @@ describe("Scaling controls", () => {
     expect(screen.getByText("LS1 Performance")).toBeTruthy();
     expect(
       screen.getByText(
-        /When the game controls the window size, lower its resolution in the game first;/,
+        /If the game sets window size, lower its resolution in-game first/,
       ),
     ).toBeTruthy();
+    expect(screen.getByText(/With fixed output, MAKO requests a smaller game image/)).toBeTruthy();
     expect(screen.queryByText(/guarded game-owned recreation/)).toBeNull();
     expect(
       screen.getByText(
-        "For MAKO, applies this 0–100% multiplier to its 3x sharpening baseline. For LS1, selects one of five learned sharpness variants.",
+        /MAKO: 0–100% of its 3x sharpening baseline/,
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/private scaler rebuild/)).toBeNull();
     expect(
       screen.getByText(
-        "Enable before starting the game. When off, scaling is fully disabled. Supports Lossless Scaling models and MAKO Scaler.",
+        /Enable before launch for Lossless Scaling or MAKO Scaler/,
       ),
     ).toBeTruthy();
     expect(
@@ -338,7 +339,7 @@ describe("Scaling controls", () => {
     expect(screen.queryByText(/\/ 4K/)).toBeNull();
     expect(screen.getByText(/480p, 720p, or more/)).toBeTruthy();
     expect(screen.queryByText(/higher on Steam Machine/)).toBeNull();
-    expect(screen.getByText(/2x doubles your resolution/)).toBeTruthy();
+    expect(screen.getAllByText(/640×360 → 1280×720/).length).toBeGreaterThan(0);
     expect(
       screen.getByText(
         /Reducing the resolution of the game and scaling it back can substantially increase performance/,
@@ -399,7 +400,7 @@ describe("Scaling controls", () => {
     expect(expanded.getAttribute("data-maximum")).toBe("2");
     expect(
       screen.getByText(
-        /Where a Gamescope output limit applies, MAKO may exceed it/,
+        /MAKO may exceed an applicable Gamescope output limit/,
       ),
     ).toBeTruthy();
   });

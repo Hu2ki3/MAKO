@@ -24,6 +24,7 @@ import {
   type AdaptiveFractionalRealFramePriority,
   FRAME_GENERATION_ENABLED,
   FRAME_GENERATION_PROVISIONED,
+  GAMESCOPE_VRR_MODE,
   getDefaults,
   PERFORMANCE_MODE,
   TARGET_FPS,
@@ -242,7 +243,7 @@ export function FpsMultiplierControl({
           }
           description={t(
             "FRAME_GENERATION_PROVISIONED_DESC",
-            "Enable before starting the game. Loads and provisions MAKO Frame Generation. Turn it off when you only want Scaling or Shaders.",
+            "Enable before launch to load Frame Generation; turn off for Scaling or Shaders only.",
           )}
           checked={frameGenerationProvisioned}
           bottomSeparator={frameGenerationProvisioned ? undefined : "none"}
@@ -259,7 +260,7 @@ export function FpsMultiplierControl({
               label={t("ADAPTIVE_TITLE", "Adaptive Frame Generation")}
               description={t(
                 "ADAPTIVE_DESC",
-                "Adjusts frame generation to reach Target FPS. The steady base cap is the default for smoother pacing. Enable Fractional Adaptive to keep more real frames, but test it per game.",
+                "Targets output FPS. Steady Base Cap favors smoother pacing by default; Fractional Adaptive keeps more real frames. Test per game.",
               )}
               checked={config.adaptive}
               onChange={(value) => onConfigUpdate(adaptiveModeChanges(value))}
@@ -314,7 +315,7 @@ export function FpsMultiplierControl({
                           fractionalGeneratedFpsLabel !== undefined
                             ? t(
                                 "ADAPTIVE_REAL_FRAME_PRIORITY_ACTIVE_RELATION",
-                                "At a {target} FPS target, the estimated split is {cap} real / {generated_fps} generated FPS (about {real}:{generated}) if the target is met. Actual rates vary. This overrides Base FPS Cap.",
+                                "At a {target} FPS target: about {cap} real / {generated_fps} generated FPS ({real}:{generated}) if reached. Actual rates vary; this overrides Base FPS Cap.",
                                 {
                                   real: fractionalPriorityRatio.real,
                                   generated: fractionalPriorityRatio.generated,
@@ -352,7 +353,7 @@ export function FpsMultiplierControl({
                   label={`${t("ADAPTIVE_TARGET_FPS", "Target FPS")} (${targetFps})`}
                   description={t(
                     "ADAPTIVE_TARGET_FPS_DESC",
-                    "Desired displayed FPS. Fractional Adaptive may mix ratios to reach it; Steady Base Cap starts at half the target and can align a validated lower integer rung.",
+                    "Desired output FPS. Fractional may mix ratios; Steady Base Cap starts at half the target and can align a validated lower integer ratio.",
                   )}
                   value={targetFps}
                   min={TARGET_FPS_MIN}
@@ -369,7 +370,7 @@ export function FpsMultiplierControl({
                       <div>
                         {t(
                           "ADAPTIVE_AUTO_BASE_FPS_CAP_DESC",
-                          "The default Adaptive mode. Starts at half the target; with Smooth Cadence it can align a validated 3x–5x rung. Pros: usually smoother pacing. Cons: fewer real frames and potentially more input lag and ghosting.",
+                          "Default Adaptive mode: starts at half the target; Smooth Cadence can align validated 3x–5x ratios. Usually smoother, with fewer real frames and possible extra lag or ghosting.",
                         )}
                       </div>
                       <MakoSettingRelationship>
@@ -442,7 +443,7 @@ export function FpsMultiplierControl({
                 label={`${t("FIXED_MULTIPLIER", "Fixed Multiplier")} (${frameGenerationEnabled ? fixedMultiplier : 0}x)`}
                 description={t(
                   "FIXED_MULTIPLIER_DESC",
-                  "Use 0x to pause or resume Frame Generation live without unloading its resources. Select 2x–5x for a constant generation ratio; 5x is a high-cost option for high-refresh displays.",
+                  "2x–5x sets a constant output ratio; 5x costs more and suits high-refresh displays. 0x pauses generation live without unloading resources.",
                 )}
                 value={
                   frameGenerationEnabled
@@ -491,11 +492,41 @@ export function FpsMultiplierControl({
           </PanelSectionRow>
 
           <PanelSectionRow>
+            <Field
+              label={t("GAMESCOPE_VRR_MODE", "Gamescope VRR")}
+              description={t(
+                "GAMESCOPE_VRR_MODE_DESC",
+                "Disabling VRR lets MAKO control frame pacing. This can improve frame generation in some games but not others, so test it per game.",
+              )}
+              childrenLayout="below"
+              childrenContainerWidth="max"
+            >
+              <Dropdown
+                rgOptions={[
+                  {
+                    data: "follow-steam",
+                    label: t("GAMESCOPE_VRR_FOLLOW_STEAM", "Follow Steam"),
+                  },
+                  { data: "on", label: t("GAMESCOPE_VRR_ON", "On") },
+                  { data: "off", label: t("GAMESCOPE_VRR_OFF", "Off") },
+                ]}
+                selectedOption={config.gamescope_vrr_mode ?? "follow-steam"}
+                onChange={(option) =>
+                  onConfigChange(
+                    GAMESCOPE_VRR_MODE,
+                    option.data as "follow-steam" | "on" | "off",
+                  )
+                }
+              />
+            </Field>
+          </PanelSectionRow>
+
+          <PanelSectionRow>
             <ToggleField
               label={t("CONFIG_PERFORMANCE_MODE", "Lighter FG Model")}
               description={t(
                 "CONFIG_PERFORMANCE_MODE_DESC",
-                "Reduces GPU work by using a lighter frame-generation model at the cost of more ghosting. Ultra Performance locks this on.",
+                "Lighter FG model lowers GPU cost but increases ghosting; Ultra Performance forces it on.",
               )}
               checked={config.ultra_performance || config.performance_mode}
               disabled={config.ultra_performance}

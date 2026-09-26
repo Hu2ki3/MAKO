@@ -81,7 +81,7 @@ export function CompatibilityConfigurationGroup({
                   <MakoSettingRelationship>
                     {t(
                       "DYNAMIC_CADENCE_RECOVERY_RELATION",
-                      "Turning this on disables Steady Base Cap and Base FPS Cap, and resets Real Frame Priority to Automatic. Changing either cap or Real Frame Priority later turns Recovery off.",
+                      "Recovery disables Steady Base Cap and Base FPS Cap and resets Real Frame Priority to Automatic. Changing either cap or priority turns Recovery off.",
                     )}
                   </MakoSettingRelationship>
                 </>
@@ -104,7 +104,7 @@ export function CompatibilityConfigurationGroup({
                   <span style={{ display: "block", paddingBottom: "6px" }}>
                     {t(
                       "DYNAMIC_CADENCE_PROBE_INTERVAL_DESC",
-                      "How often Recovery tests the native frame rate. 0.1 seconds is aggressive and may cause frequent brief pacing hitches; 2 seconds is the default, while 3 seconds checks least often. Test per game.",
+                      "Recovery check interval: 0.1 s may hitch often; 2 s is default; 3 s checks least often. Test per game.",
                     )}
                   </span>
                 }
@@ -140,13 +140,13 @@ export function CompatibilityConfigurationGroup({
                   <div>
                     {t(
                       "CONFIG_GAMESCOPE_WSI_COMPATIBILITY_DESC",
-                      "May reduce coloured or pixelated motion artifacts in some games by using Gamescope's presentation path. Optional with both Scaling and Frame Generation. Enable it only when the game needs it.",
+                      "May reduce coloured or pixelated motion artifacts through Gamescope presentation. Optional with Scaling and Frame Generation; enable only if needed.",
                     )}
                   </div>
                   <MakoInlineTip tone="warning">
                     {t(
                       "CONFIG_GAMESCOPE_WSI_COMPATIBILITY_WARNING",
-                      "This compatibility path is limited to supported 64-bit host launches. Leave it off when the game does not need it, as it may impact performance.",
+                      "Only supported 64-bit host launches. Leave off unless needed; it may reduce performance.",
                     )}
                   </MakoInlineTip>
                 </>
@@ -173,7 +173,7 @@ export function CompatibilityConfigurationGroup({
                   <div>
                     {t(
                       "CONFIG_SWAPCHAIN_IMAGE_COUNT_COMPATIBILITY_DESC",
-                      "Can fix games that fail to start with Frame Generation by preserving the game's requested swapchain image minimum. Enable it only for affected games.",
+                      "May fix startup failures with Frame Generation by keeping the game's requested swapchain image minimum. Use only for affected games.",
                     )}
                   </div>
                   <MakoInlineTip tone="warning">
@@ -224,7 +224,7 @@ export function CompatibilityConfigurationGroup({
               }
               description={t(
                 "CONFIG_ENABLE_ZINK_DESC",
-                "Uses the Vulkan-based OpenGL implementation for OpenGL games. May cause crashes or freezes in some games.",
+                "Runs OpenGL games through Vulkan; may crash or freeze some games.",
               )}
               checked={config.enable_zink}
               onChange={(value) => onConfigChange(ENABLE_ZINK, value)}
@@ -243,7 +243,7 @@ export function CompatibilityConfigurationGroup({
               }
               description={t(
                 "CONFIG_FORCE_ALSA_AUDIO_DESC",
-                "May improve compatibility with modes such as Zink and reduce audio stuttering or sudden loud sounds. Disable to restore normal audio defaults.",
+                "May help Zink compatibility, audio stutter, or sudden loud sounds. Turn off to restore default audio.",
               )}
               bottomSeparator="none"
               checked={config.force_alsa_audio}

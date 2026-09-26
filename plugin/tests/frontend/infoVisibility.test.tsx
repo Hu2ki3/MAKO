@@ -255,7 +255,7 @@ test("clicking the ribbon persists the choice across reopening without changing 
   expect(isDisplayed(screen.getByText("v3.2.1"))).toBe(true);
   expect(isDisplayed(screen.getByText("the-captain"))).toBe(true);
   expect(isDisplayed(screen.getByText("Waiting for MAKO"))).toBe(true);
-  expect(isDisplayed(screen.getByText(/Live status is unavailable/))).toBe(
+  expect(isDisplayed(screen.getByText(/Live metrics unavailable/))).toBe(
     true,
   );
   fireEvent.click(screen.getByRole("button", { name: "Show info" }));
@@ -746,7 +746,7 @@ test("the model-warning update action keeps focus across R1 and still opens upda
     expect(document.activeElement).toBe(update);
     expect(isDisplayed(update)).toBe(true);
     expect(screen.getByRole("alert").textContent).toContain(
-      "verify Lossless Scaling and collect diagnostics",
+      "verify Lossless Scaling files and collect diagnostics",
     );
   }
   fireEvent.click(update);

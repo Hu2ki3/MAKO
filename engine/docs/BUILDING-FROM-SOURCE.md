@@ -4,15 +4,16 @@ This guide covers local development, source installation, and distributable Rend
 
 <!-- prettier-ignore -->
 > [!IMPORTANT]
-> If you are planning on compiling MAKO Renderer on SteamOS, you need to temporarily disable read-only protection and restore the base C/C++ headers first:
+> If you are planning on compiling MAKO Renderer on SteamOS, check the direct-build prerequisites from the repository root, then run the installer if anything is missing:
 >
 > ```bash
-> sudo steamos-readonly disable
-> sudo pacman -S glibc linux-api-headers lib32-glibc
-> sudo steamos-readonly enable
+> ./engine/scripts/install-steamos-build-tools.sh --check
+> ./engine/scripts/install-steamos-build-tools.sh --install
 > ```
 >
-> The command intentionally does not use `--needed`: some SteamOS images report `glibc`, `linux-api-headers`, or `lib32-glibc` as installed while a required header is absent. Reinstalling those packages restores the headers. Only run `pacman-key --init` and `pacman-key --populate` if Pacman specifically reports a keyring or signature error.
+> The installer restores the original SteamOS read-only state, initializes the official Arch and Holo keyrings, and reinstalls the native build packages without `--needed`. Some SteamOS images preserve Pacman's installed-package records while removing development files or the local keyring. The script prompts before the Pacman transaction and does not build or deploy MAKO.
+
+SteamOS image updates can also leave X11, XCB, Wayland, Vulkan loader, and Qt packages registered with Pacman while their development headers or metadata are absent. The installer restores these alongside the compiler, 32-bit headers, shader tools, and Flatpak development tools; its `--check` mode reports missing commands and headers without changing the host.
 
 ## Prerequisites
 
@@ -42,7 +43,7 @@ sudo apt-get install -y \
     qt6-tools-dev qt6-tools-dev-tools \
     qt6-declarative-dev qt6-declarative-dev-tools
 
-# On Arch Linux, use:
+# On writable Arch Linux, use (SteamOS users should run the installer above):
 sudo pacman -S --needed \
     git curl python \
     llvm clang ccache lib32-glibc \
@@ -68,9 +69,9 @@ Use the incremental script for iteration, the standalone package for one host ar
 
 For an explicitly requested maintainer exception, `MAKO_RELEASE_SKIP_TESTS=1` omits test compilation, CTest, and launcher tests while retaining build, ABI, archive, and checksum verification. See the [hotfix exception](../../HOW_TO_RELEASE.md#maintainer-directed-hotfix-without-automated-validation). Publication always uses the portable builders: Ubuntu 22.04, Clang 14, Qt 6.2, and the pinned Vulkan headers for the native archive, plus Ubuntu 24.04 driving each declared Flatpak runtime SDK. Use `MAKO_PORTABLE_PACKAGE=1` for complete tester packages too; the scripts select Docker or Podman automatically. Without that flag, Flatpak packaging uses host `flatpak-builder` when available and falls back to the container builder when it is absent. Follow the [build-alignment and evidence requirements](../../HOW_TO_RELEASE.md#keep-tester-and-release-builds-aligned) when comparing tester and release artifacts.
 
-Every native and Flatpak archive build enables `MAKO_REQUIRE_NATIVE_PACKAGE_HEADERS=ON` for both architectures; the option retains its historical name for compatibility. CMake compiles the actual presentation-filter header and rejects headers older than the pinned revision or missing `VK_KHR_present_id2` or `VK_EXT_present_timing`, including when automated tests are disabled. The timing-node ABI checks therefore compile against the official `VkPresentTimingsInfoEXT` declaration. This prevents SDK selection from silently removing the packaged Renderer's presentation compatibility. It is a build-time requirement, not a higher Vulkan driver/API requirement. Direct development CMake builds retain their existing header compatibility. Flatpak builds use the shared pinned headers with each runtime's existing compiler and libraries and still need runtime-specific evidence.
+Native and Flatpak archive builds and `scripts/build-steamos-dev.sh` enable `MAKO_REQUIRE_NATIVE_PACKAGE_HEADERS=ON` for both applicable architectures; the option retains its historical name for compatibility. CMake compiles the actual presentation-filter header and rejects headers older than the pinned revision or missing `VK_KHR_present_id2` or `VK_EXT_present_timing`, including when automated tests are disabled. The timing-node ABI checks therefore compile against the official `VkPresentTimingsInfoEXT` declaration. This prevents SDK selection from silently removing presentation compatibility. It is a build-time requirement, not a higher Vulkan driver/API requirement. Manual CMake builds retain their default host-header compatibility unless this option is enabled. Flatpak builds use the shared pinned headers with each runtime's existing compiler and libraries and still need runtime-specific evidence.
 
-[`engine/vulkan-headers-revision.txt`](../vulkan-headers-revision.txt) is the single owner of the native and Flatpak Vulkan-Headers build pin and minimum header version. It contains one upstream SDK branch (`vulkan-sdk-X.Y.Z`) or release tag (`vX.Y.Z`). The portable packager and main Renderer CI builds fetch that ref, and CMake derives its minimum version from the same file. `scripts/generate-flatpak-vulkan-headers.py` derives the shared Flatpak module from it; regenerate after pin changes, then run its read-only `--check` gate. All three Flatpak manifests include that generated module before their two Renderer builds. The headers are removed during Flatpak cleanup and are not a runtime dependency. An SDK branch can advance, so retain the resolved header commit with the build evidence. MAKO Decky delegates native source builds to this Renderer packager and has no separate header pin. The sanitizer CI job retains its host headers for distribution SDK coverage. To update the baseline, change this file and qualify the resulting packages under the tester/release build-alignment requirements above. The Vulkan layer manifests' `api_version` describes the layer's supported API and is maintained separately; it must not automatically follow header updates.
+[`engine/vulkan-headers-revision.txt`](../vulkan-headers-revision.txt) is the single owner of the native and Flatpak Vulkan-Headers build pin and minimum header version. It contains one upstream SDK branch (`vulkan-sdk-X.Y.Z`) or release tag (`vX.Y.Z`). The portable packager, fast SteamOS development builder, and main Renderer CI builds fetch that ref, and CMake derives its minimum version from the same file. The fast builder caches a release tag under `engine/build/cache/vulkan-headers/`, resolves a movable SDK branch on each run, and logs the selected commit. `scripts/generate-flatpak-vulkan-headers.py` derives the shared Flatpak module from the pin; regenerate after pin changes, then run its read-only `--check` gate. All three Flatpak manifests include that generated module before their two Renderer builds. The headers are removed during Flatpak cleanup and are not a runtime dependency. An SDK branch can advance, so retain the resolved header commit with the build evidence. MAKO Decky delegates native source builds to the owning Renderer builder and has no separate header pin. The sanitizer CI job retains its host headers for distribution SDK coverage. To update the baseline, change this file and qualify the resulting packages under the tester/release build-alignment requirements above. The Vulkan layer manifests' `api_version` describes the layer's supported API and is maintained separately; it must not automatically follow header updates.
 
 [`engine/vkbasalt-release.json`](../vkbasalt-release.json) owns MAKO's runtime vkBasalt dependency. The pin identifies an immutable tag and source commit in MAKO's maintained fork, the exact dual-architecture release asset, its upstream baseline, and its SHA-256. `scripts/manage-vkbasalt-release.py` validates the pin, release provenance, internal checksums, both ELF classes, Vulkan layer entry points, manifests, and activation gates. Native packaging stages the verified libraries under `lib/vkbasalt` and `lib32/vkbasalt`; the generated Flatpak module stages the same release inside each runtime extension. Neither path installs vkBasalt system-wide. The cached download lives under `build/cache/vkbasalt` and can be relocated with `MAKO_BUILD_CACHE_ROOT` through the package scripts.
 
@@ -93,6 +94,8 @@ For native Steam-game iteration, use the persistent incremental build instead of
 ```bash
 ./scripts/build-steamos-dev.sh
 ```
+
+This native host build uses the shared Vulkan-Headers pin and package presentation check while retaining its incremental CMake tree. Its first run needs network access to cache the pinned headers; later runs reuse a pinned release tag offline. It still needs the host C++ toolchain and X11/XCB development headers. Use the portable package builder when the output itself must match the release toolchain and packaging checks.
 
 It builds both 64-bit Renderer roles and the CLI, retaining `build/steamos-dev` between runs. For real AMD validation with a sibling MAKO Gym checkout, run `./scripts/run-mako-gym.sh --suite quality --cli build/steamos-dev/mako-cli/mako-cli`. To retain a second tree for genuine 32-bit games, run:
 
@@ -166,6 +169,7 @@ Useful CMake options:
 - `MAKO_INSTALL_DEVELOP`: Set to `On` to install development files like headers and libraries (default is `Off`).
 - `MAKO_INSTALL_XDG_FILES`: Set to `On` to install XDG desktop files and icons (default is `Off`).
 - `MAKO_REQUIRE_NATIVE_PACKAGE_HEADERS`: Require the shared native/Flatpak Vulkan header baseline (default is `Off` for direct CMake builds; all package builds set it to `On`).
+- `MAKO_VULKAN_HEADERS_INCLUDE_DIR`: Prefer an explicit Vulkan-Headers `include/` directory for compilation and the required-header check; the fast SteamOS builder sets this to its cache of the shared pin.
 - `MAKO_LAYER_LIBRARY_PATH`: Override the frame-generation role library path stored in its manifest.
 - `MAKO_SCALING_LAYER_LIBRARY_PATH`: Override the spatial role library path stored in its manifest.
 - `MAKO_LAYER_MANIFEST_SUFFIX`: Add a suffix to the installed manifest filename when packaging multiple architectures.

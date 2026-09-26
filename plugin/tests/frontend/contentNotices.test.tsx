@@ -223,7 +223,7 @@ describe("content status notices", () => {
     expect(welcome.textContent).toContain(
       "If anything looks or feels wrong after several changes, restart the game for a clean new session.",
     );
-    const finalTip = screen.getByText(/keep an eye on the release page!$/);
+    const finalTip = screen.getByText(/check the release page for MAKO updates\.$/);
     const underlinedPhrases = Array.from(welcome.querySelectorAll("span"))
       .filter((element) => element.style.textDecorationLine === "underline")
       .map((element) => element.textContent);

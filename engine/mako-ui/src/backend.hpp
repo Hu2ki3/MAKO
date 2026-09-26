@@ -74,6 +74,7 @@ namespace mako::ui {
         Q_PROPERTY(uint target_fps READ getTargetFPS WRITE targetFPSUpdated NOTIFY refreshUI)
         Q_PROPERTY(size_t adaptive_max_multiplier READ getAdaptiveMaxMultiplier WRITE adaptiveMaxMultiplierUpdated NOTIFY refreshUI)
         Q_PROPERTY(bool adaptive_stable_cadence READ getAdaptiveStableCadence WRITE adaptiveStableCadenceUpdated NOTIFY refreshUI)
+        Q_PROPERTY(QString gamescope_vrr_mode READ getGamescopeVrrMode WRITE gamescopeVrrModeUpdated NOTIFY refreshUI)
         Q_PROPERTY(bool dynamic_cadence_recovery READ getDynamicCadenceRecovery WRITE dynamicCadenceRecoveryUpdated NOTIFY refreshUI)
         Q_PROPERTY(double dynamic_cadence_probe_interval_seconds READ getDynamicCadenceProbeIntervalSeconds WRITE dynamicCadenceProbeIntervalSecondsUpdated NOTIFY refreshUI)
         Q_PROPERTY(bool ultra_performance READ getUltraPerformance WRITE ultraPerformanceUpdated NOTIFY refreshUI)
@@ -270,6 +271,10 @@ namespace mako::ui {
         [[nodiscard]] bool getFrameGenerationEnabled() const {
             VALIDATE_AND_GET_PROFILE(ls::GameConfDefaults::frameGenerationEnabled)
             return conf.frame_generation_enabled;
+        }
+        [[nodiscard]] QString getGamescopeVrrMode() const {
+            VALIDATE_AND_GET_PROFILE(QStringLiteral("follow-steam"))
+            return QString::fromUtf8(ls::gamescopeVrrModeName(conf.gamescope_vrr_mode));
         }
         [[nodiscard]] uint getFrameGenerationFactorIndex() const {
             VALIDATE_AND_GET_PROFILE(1U)
@@ -612,6 +617,13 @@ namespace mako::ui {
         void frameGenerationEnabledUpdated(bool frame_generation_enabled) {
             VALIDATE_AND_GET_PROFILE()
             conf.frame_generation_enabled = frame_generation_enabled;
+            MARK_DIRTY()
+        }
+        void gamescopeVrrModeUpdated(const QString& value) {
+            VALIDATE_AND_GET_PROFILE()
+            const auto mode = ls::gamescopeVrrModeFromName(value.toStdString());
+            if (!mode) return;
+            conf.gamescope_vrr_mode = *mode;
             MARK_DIRTY()
         }
         void frameGenerationFactorIndexUpdated(uint index) {

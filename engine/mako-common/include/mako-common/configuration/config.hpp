@@ -28,6 +28,27 @@ namespace ls {
         None
     };
 
+    /// Live Gamescope VRR preference for a matched MAKO launch.
+    enum class GamescopeVrrMode : uint8_t { FollowSteam, On, Off };
+
+    [[nodiscard]] constexpr const char* gamescopeVrrModeName(
+            GamescopeVrrMode mode) noexcept {
+        switch (mode) {
+            case GamescopeVrrMode::FollowSteam: return "follow-steam";
+            case GamescopeVrrMode::On: return "on";
+            case GamescopeVrrMode::Off: return "off";
+        }
+        return "follow-steam";
+    }
+
+    [[nodiscard]] constexpr std::optional<GamescopeVrrMode>
+    gamescopeVrrModeFromName(std::string_view value) noexcept {
+        if (value == "follow-steam") return GamescopeVrrMode::FollowSteam;
+        if (value == "on") return GamescopeVrrMode::On;
+        if (value == "off") return GamescopeVrrMode::Off;
+        return std::nullopt;
+    }
+
     /// Spatial reconstruction implementation selected for a profile.
     enum class ScalingMethod : uint8_t {
         /// Preserve the game's native image while the Scaling Engine remains provisioned.
@@ -153,6 +174,8 @@ namespace ls {
         static constexpr uint32_t targetFps = 120;
         static constexpr size_t adaptiveMaxMultiplier = 3;
         static constexpr bool adaptiveStableCadence = true;
+        static constexpr GamescopeVrrMode gamescopeVrrMode =
+            GamescopeVrrMode::FollowSteam;
         static constexpr bool dynamicCadenceRecovery = false;
         static constexpr float dynamicCadenceProbeIntervalSeconds = 2.0F;
         static constexpr bool ultraPerformance = false;
@@ -240,6 +263,8 @@ namespace ls {
         size_t adaptive_max_multiplier{GameConfDefaults::adaptiveMaxMultiplier};
         /// prefer a validated even display-divisor cadence when safe
         bool adaptive_stable_cadence{GameConfDefaults::adaptiveStableCadence};
+        /// opt-in physical VRR override while this profile's game runs
+        GamescopeVrrMode gamescope_vrr_mode{GameConfDefaults::gamescopeVrrMode};
         /// periodically expose native cadence to detect upward rate changes
         bool dynamic_cadence_recovery{GameConfDefaults::dynamicCadenceRecovery};
         /// seconds between optional native-cadence probes

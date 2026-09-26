@@ -120,7 +120,7 @@ describe("Performance Settings", () => {
       screen.getByText(/LS1 Performance when Scaling is enabled/),
     ).toBeTruthy();
     expect(
-      screen.getByText(/performance across the active MAKO features/),
+      screen.getByText(/Trades image quality for performance/),
     ).toBeTruthy();
     const info = screen.getByRole("note");
     expect(info.getAttribute("data-tone")).toBe("info");

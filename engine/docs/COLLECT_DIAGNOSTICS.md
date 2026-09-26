@@ -79,6 +79,8 @@ The helper prefers MAKO Decky's private log when present; otherwise it selects t
 
 Run `mako-diagnostics --list` to see focused presets. `startup`, `layers`, `config`, `scaling`, `adaptive`, `recovery`, `performance`, `lifecycle`, `hdr`, and `errors` may be combined. Every preset retains the initial Gamescope VRR/Allow Tearing snapshot and live pacing-owner changes. The `recovery` and `performance` presets also include Gamescope focus changes for menu-related reports and retain recovery records from older builds. These records describe Renderer state and queueing, not reconstructed image quality or compositor scanout.
 
+The optional Gamescope VRR override writes transition-only decision and restoration records to its separate systemd user-service journal, not this game log. After a Game Mode test, inspect them from Desktop Mode with `journalctl --user -o short-iso | grep -F 'MAKO Renderer: Gamescope VRR lease'`.
+
 With Gamescope WSI disabled, a `spatial scaling surface bridge` record only shows that MAKO associated the game with Gamescope. To confirm that scaling actually ran, check that the same session reports different active source and presentation resolutions.
 
 `--session previous`, `oldest`, `previous-two`, or `all` applies only when the selected base log has MAKO Decky's rotated session files. A standalone Steam console log has no such history.

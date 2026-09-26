@@ -735,7 +735,7 @@ export function ShadersConfigurationGroup({
           }
           description={t(
             "CONFIG_ENABLE_VKBASALT_DESC",
-            "Enable before starting the game. Applies MAKO's bundled sharpening, anti-aliasing, and shader effects. No separate installation is needed. If effects are not visible, switch between Windowed and Fullscreen.",
+            "Enable before launch for bundled sharpening, anti-aliasing, and shaders. No separate install. If effects are invisible, switch Windowed/Fullscreen.",
           )}
           bottomSeparator={vkBasaltEnabled ? undefined : "none"}
           checked={vkBasaltEnabled}

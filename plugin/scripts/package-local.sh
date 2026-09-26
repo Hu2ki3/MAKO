@@ -302,6 +302,13 @@ if [[ -n "$local_engine_repo" ]]; then
     local_engine_fingerprint="$(worktree_fingerprint "$local_engine_repo")"
     local_engine_label="$local_engine_label.dirty.$local_engine_fingerprint"
   fi
+  # Source identity alone cannot distinguish a host/default build from the
+  # portable release builders. Keep their native and Flatpak caches separate.
+  local_engine_builder_label="default"
+  if [[ "${MAKO_PORTABLE_PACKAGE:-0}" == "1" ]]; then
+    local_engine_builder_label="portable"
+  fi
+  local_engine_label="$local_engine_label.$local_engine_builder_label"
 
   # A local Decky build must have a plugin version distinct from the previous
   # package, otherwise Decky can keep the already-loaded Python backend and
@@ -455,6 +462,11 @@ manifest_paths=(
   "./share/vulkan/implicit_layer.d/VkLayer_MAKO_spatial_scaling.json"
   "./share/mako-render/vulkan/vkbasalt.d/vkBasalt.json"
 )
+if ! tar -tf "$package_dir/bin/$archive_name" |
+    grep -Fx "./bin/mako-vrr-lease" >/dev/null; then
+  echo "Engine archive is missing ./bin/mako-vrr-lease" >&2
+  exit 1
+fi
 if [[ "$build_64_only" != true ]]; then
   manifest_paths+=(
     "./share/vulkan/implicit_layer.d/VkLayer_MAKO_render.x86.json"

@@ -70,7 +70,7 @@ export function ManualOverridesConfigurationGroup({
                 <span className="Mako_OptionDescription">
                   {t(
                     "CONFIG_ACTIVE_IN_DESC",
-                    "Executable or process names separated by commas. Running-game capture fills these automatically; edit them only when a launcher or emulator needs an additional process alias.",
+                    "Comma-separated process names. Game capture fills these; edit only to add a launcher or emulator alias.",
                   )}
                 </span>
               }

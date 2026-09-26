@@ -111,7 +111,7 @@ Spatial changes must also follow the surface, extent, queue, format, startup, li
 
 ## Local release-candidate check
 
-Build one complete portable MAKO Decky ZIP from the clean pushed candidate and pass its printed path to `scripts/check-release-candidate.sh`. The check reuses the ZIP and verifies the package contract, source commit, 64-bit/32-bit host layers, and every supported Flatpak bundle. It does not create a GitHub runner, rebuild, install, or run MAKO Gym. [How to release MAKO](HOW_TO_RELEASE.md#prepare-the-release) gives the commands.
+Build one complete portable MAKO Decky ZIP from the clean pushed candidate and pass its printed path to `scripts/check-release-candidate.sh`. The check reuses the ZIP and verifies the package contract, source commit, portable native builder identity, 64-bit/32-bit host layers, and every supported Flatpak bundle. It does not create a GitHub runner, rebuild, install, or run MAKO Gym. [How to release MAKO](HOW_TO_RELEASE.md#prepare-the-release) gives the commands.
 
 Run MAKO Gym separately when a changed boundary needs targeted hardware evidence. Use the table above to choose the suite and retain the package identity, source commit, host/driver, Gym commit, configuration, and results. Direct-desktop coverage must start from a graphical session outside Gamescope. Record unavailable or unselected rows as not tested; local game tests and the final published-package installation check remain separate.
 

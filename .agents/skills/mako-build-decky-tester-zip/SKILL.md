@@ -7,11 +7,13 @@ description: Build and verify a complete portable MAKO Decky tester ZIP from the
 
 Use MAKO's owning packager so tester archives retain the same portable native and Flatpak builders used by publication.
 
+Execution boundary: the host orchestrates and verifies the ZIP. Docker or Podman compiles the native Renderer in the Ubuntu 22.04 portable builder and builds Flatpak bundles in the Ubuntu 24.04 builder; the containers do more than cache downloads. The Flatpak cache persists in a container volume, while outputs return to the checkout.
+
 ## Workflow
 
 1. Locate the MAKO repository root and confirm it contains `AGENTS.md`, `plugin/package.json`, and `engine/`. Read the current `AGENTS.md` and `plugin/docs/PACKAGING.md`; they remain authoritative if this skill becomes stale.
 2. Inspect the branch and worktree. Preserve all user changes. A dirty checkout is allowed for a tester build and is represented in the local artifact identity.
-3. Tell the user the portable complete build is starting and may take several minutes. From the repository root run exactly:
+3. Tell the user the portable complete build is starting and may take several minutes. Run the command and container-runtime checks on the actual host (`exec_command` with `sandbox_permissions: "require_escalated"` in Codex); the default isolated shell may not access the host Podman/Docker state. From the repository root run exactly:
 
    ```bash
    MAKO_PORTABLE_PACKAGE=1 pnpm --dir plugin run package:local-engine

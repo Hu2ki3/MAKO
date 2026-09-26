@@ -16,7 +16,7 @@ from .constants import (
     LIB_FILENAME, JSON_FILENAME, JSON32_FILENAME,
     SPATIAL_SCALING_LIB_FILENAME,
     SPATIAL_SCALING_JSON_FILENAME, SPATIAL_SCALING_JSON32_FILENAME,
-    CLI_FILENAME, CLI_DIR, BIN_DIR,
+    CLI_FILENAME, CLI_DIR, VRR_LEASE_FILENAME, BIN_DIR,
     DIAGNOSTICS_HELPER_FILENAME, MAKO_LAYER_NAME,
     MAKO_LAYER_ENABLE_ENV, MAKO_LAYER_DISABLE_ENV,
     SPATIAL_SCALING_LAYER_NAME,
@@ -133,6 +133,7 @@ class InstallationService(BaseService):
             self.user_home / VKBASALT_SHADER_DIR
         )
         self.cli_file = self.user_home / CLI_DIR / CLI_FILENAME
+        self.vrr_lease_file = self.user_home / CLI_DIR / VRR_LEASE_FILENAME
         self.engine_state_file = self.local_lib_dir.parent / "installed-engine.json"
         self.active_renderer_state_file = (
             self.local_lib_dir.parent / ACTIVE_RENDERER_STATE_FILENAME
@@ -538,6 +539,7 @@ class InstallationService(BaseService):
             OSError: If file operations fail
         """
         required_destinations = {
+            f"bin/{VRR_LEASE_FILENAME}": self.vrr_lease_file,
             f"lib/{LIB_FILENAME}": self.lib_file,
             f"share/vulkan/implicit_layer.d/{JSON_FILENAME}": self.json_file,
             f"lib/{SPATIAL_SCALING_LIB_FILENAME}":
@@ -736,7 +738,7 @@ class InstallationService(BaseService):
                         copy_managed_file_atomically(
                             temp_file,
                             destination,
-                            0o755 if filename == CLI_FILENAME else 0o644,
+                            0o755 if filename in (CLI_FILENAME, VRR_LEASE_FILENAME) else 0o644,
                             self.log,
                         )
                     self.log.info("Installed %s to %s", filename, destination)

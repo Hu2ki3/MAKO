@@ -292,7 +292,7 @@ describe("authoritative live status", () => {
     expect(screen.getByText("Waiting for MAKO")).toBeTruthy();
     expect(
       screen.getByText(
-        /Live status is unavailable, but MAKO may still be active/,
+        /Live metrics unavailable; MAKO may still work/,
       ),
     ).toBeTruthy();
     expect(

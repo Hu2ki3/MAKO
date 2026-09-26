@@ -162,6 +162,7 @@ export const ADAPTIVE_FRACTIONAL_REAL_FRAME_PRIORITY = "adaptive_fractional_real
 export const TARGET_FPS = "target_fps" as const;
 export const ADAPTIVE_MAX_MULTIPLIER = "adaptive_max_multiplier" as const;
 export const ADAPTIVE_STABLE_CADENCE = "adaptive_stable_cadence" as const;
+export const GAMESCOPE_VRR_MODE = "gamescope_vrr_mode" as const;
 export const DYNAMIC_CADENCE_RECOVERY = "dynamic_cadence_recovery" as const;
 export const DYNAMIC_CADENCE_PROBE_INTERVAL_SECONDS = "dynamic_cadence_probe_interval_seconds" as const;
 export const ULTRA_PERFORMANCE = "ultra_performance" as const;
@@ -301,6 +302,12 @@ export const CONFIG_SCHEMA: Record<string, ConfigField> = {
     fieldType: ConfigFieldType.BOOLEAN,
     default: true,
     description: "prefer an even display-divisor cadence; may lower real-frame cadence and increase input lag"
+  },
+  gamescope_vrr_mode: {
+    name: "gamescope_vrr_mode",
+    fieldType: ConfigFieldType.STRING,
+    default: "follow-steam",
+    description: "live Gamescope VRR preference during a matched MAKO game; follow Steam by default"
   },
   dynamic_cadence_recovery: {
     name: "dynamic_cadence_recovery",
@@ -450,6 +457,7 @@ export interface ConfigurationData {
   target_fps: number;
   adaptive_max_multiplier: number;
   adaptive_stable_cadence: boolean;
+  gamescope_vrr_mode: string;
   dynamic_cadence_recovery: boolean;
   dynamic_cadence_probe_interval_seconds: number;
   ultra_performance: boolean;
@@ -501,6 +509,7 @@ export function getDefaults(): ConfigurationData {
     target_fps: 90,
     adaptive_max_multiplier: 3,
     adaptive_stable_cadence: true,
+    gamescope_vrr_mode: "follow-steam",
     dynamic_cadence_recovery: false,
     dynamic_cadence_probe_interval_seconds: 2.0,
     ultra_performance: false,
@@ -545,6 +554,7 @@ export function getFieldTypes(): Record<string, ConfigFieldType> {
     target_fps: ConfigFieldType.INTEGER,
     adaptive_max_multiplier: ConfigFieldType.INTEGER,
     adaptive_stable_cadence: ConfigFieldType.BOOLEAN,
+    gamescope_vrr_mode: ConfigFieldType.STRING,
     dynamic_cadence_recovery: ConfigFieldType.BOOLEAN,
     dynamic_cadence_probe_interval_seconds: ConfigFieldType.FLOAT,
     ultra_performance: ConfigFieldType.BOOLEAN,

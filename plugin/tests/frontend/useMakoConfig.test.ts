@@ -68,8 +68,11 @@ describe("native host installation boundary", () => {
     const { result } = renderHook(() => useInstallationStatus());
 
     await waitFor(() =>
-      expect(mocks.checkMakoInstalled).toHaveBeenCalledOnce(),
+      expect(result.current.installationStatus).toBe(
+        "MAKO Renderer not installed",
+      ),
     );
+    expect(mocks.checkMakoInstalled).toHaveBeenCalledOnce();
     expect(result.current.hostArchitectureSupported).toBe(true);
     expect(result.current.installationStatus).toBe(
       "MAKO Renderer not installed",

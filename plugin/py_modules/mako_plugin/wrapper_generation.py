@@ -67,7 +67,7 @@ from .profile_storage import (
 )
 
 
-WRAPPER_FORMAT_VERSION = 69
+WRAPPER_FORMAT_VERSION = 70
 WRAPPER_FORMAT_MARKER = f"# mako-wrapper-format: {WRAPPER_FORMAT_VERSION}"
 HOST_COMPATIBILITY_MARKER = "# mako-host-compatibility: aarch64-passthrough-v1"
 DIAGNOSTICS_DEFAULT_MARKER = (
@@ -130,6 +130,7 @@ class WrapperGenerationContext:
     config_dir: Path
     config_file_path: Path
     local_share_dir: Path
+    renderer_bin_dir: Path
     user_vulkan_layer_dir: Path
     spatial_scaling_layer_dir: Path
     gamescope_wsi_compatibility_dir: Path
@@ -850,6 +851,7 @@ def assemble_script_content(
     lines.extend(configuration_lines)
     lines.extend(layer_lines)
     lines.extend(selection_lines)
+    lines.extend(vrr_lease_lines(context))
     lines.append('exec "$@"')
     return "\n".join(lines) + "\n"
 
@@ -873,8 +875,23 @@ def assemble_profile_script_content(
     lines.extend(profile_configuration_lines)
     lines.extend(layer_lines)
     lines.extend(selection_lines)
+    lines.extend(vrr_lease_lines(context))
     lines.append('exec "$@"')
     return "\n".join(lines) + "\n"
+
+
+def vrr_lease_lines(context: WrapperGenerationContext) -> list[str]:
+    """Attach a detached live Gamescope lease without changing exec semantics."""
+    helper = shlex.quote(str(context.renderer_bin_dir / "mako-vrr-lease"))
+    return [
+        f'if [ -n "${{{GAMESCOPE_WAYLAND_DISPLAY_ENV}:-}}" ] && '
+        f'{{ [ -z "${{{WAYLAND_DISPLAY_ENV}:-}}" ] || '
+        f'[ "${{{WAYLAND_DISPLAY_ENV}}}" = "${{{GAMESCOPE_WAYLAND_DISPLAY_ENV}}}" ]; }} && '
+        f'[ -x {helper} ]; then',
+        '    export MAKO_VRR_LEASE_TOKEN="$$-$RANDOM-$RANDOM"',
+        f'    {helper} --start "$$" "$MAKO_VRR_LEASE_TOKEN" || :',
+        'fi',
+    ]
 
 
 def generate_script_content(

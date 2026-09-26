@@ -60,6 +60,14 @@ ADAPTIVE_FRACTIONAL_REAL_FRAME_PRIORITY_VALUES = (
     ADAPTIVE_FRACTIONAL_REAL_FRAME_PRIORITY_HIGH,
     ADAPTIVE_FRACTIONAL_REAL_FRAME_PRIORITY_VERY_HIGH,
 )
+GAMESCOPE_VRR_MODE_FOLLOW_STEAM = "follow-steam"
+GAMESCOPE_VRR_MODE_ON = "on"
+GAMESCOPE_VRR_MODE_OFF = "off"
+GAMESCOPE_VRR_MODE_VALUES = (
+    GAMESCOPE_VRR_MODE_FOLLOW_STEAM,
+    GAMESCOPE_VRR_MODE_ON,
+    GAMESCOPE_VRR_MODE_OFF,
+)
 DYNAMIC_CADENCE_PROBE_INTERVAL_SECONDS_MIN = 0.1
 DYNAMIC_CADENCE_PROBE_INTERVAL_SECONDS_MAX = 3
 DYNAMIC_CADENCE_PROBE_INTERVAL_SECONDS_VALUES = (
@@ -320,6 +328,13 @@ CONFIG_SCHEMA_DEF: Dict[str, ConfigFieldDefinition] = {
         "fieldType": ConfigFieldType.BOOLEAN,
         "default": True,
         "description": "prefer an even display-divisor cadence; may lower real-frame cadence and increase input lag",
+        "location": "toml"
+    },
+
+    "gamescope_vrr_mode": {
+        "fieldType": ConfigFieldType.STRING,
+        "default": GAMESCOPE_VRR_MODE_FOLLOW_STEAM,
+        "description": "live Gamescope VRR preference during a matched MAKO game; follow Steam by default",
         "location": "toml"
     },
 

@@ -11,7 +11,7 @@
 namespace mako::layer {
 
     namespace detail {
-        // Packaged builds may use Vulkan headers older than EXT_present_timing
+        // Manual builds may use Vulkan headers older than EXT_present_timing
         // while the game's driver exposes it. Only this outer node is copied;
         // its per-swapchain timing array remains opaque and caller-owned.
         // ABI: https://docs.vulkan.org/refpages/latest/refpages/source/VkPresentTimingsInfoEXT.html

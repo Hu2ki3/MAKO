@@ -179,6 +179,7 @@ SPATIAL_SCALING_JSON32_FILENAME = (
     "VkLayer_MAKO_spatial_scaling.x86.json"
 )
 CLI_FILENAME = "mako-cli"
+VRR_LEASE_FILENAME = "mako-vrr-lease"
 CLI_DIR = f"{MAKO_ROOT}/bin"
 
 # The standalone uninstaller mirrors this fixed list so removing MAKO Renderer
@@ -204,6 +205,7 @@ DECKY_NATIVE_RENDERER_RELATIVE_PATHS = (
     *(f"{VKBASALT_SHADER_DIR}/{name}"
       for name in VKBASALT_SHADER_ASSET_FILENAMES),
     f"{CLI_DIR}/{CLI_FILENAME}",
+    f"{CLI_DIR}/{VRR_LEASE_FILENAME}",
     f"{MAKO_ROOT}/installed-engine.json",
     f"{MAKO_ROOT}/{ACTIVE_RENDERER_STATE_FILENAME}",
     MAKO_WRAPPER_RELATIVE_PATH,

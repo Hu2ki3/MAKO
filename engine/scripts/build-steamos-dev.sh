@@ -23,7 +23,8 @@ The default builds the 64-bit layer and CLI. The build directories are retained
 between runs; this does not build the Qt UI, Flatpak extensions, general test
 suite, archives, or a Decky ZIP. Real-hardware licensed-model validation is
 owned by the sibling MAKO Gym repository. Set CXX to choose a compiler. ccache
-is used automatically when present.
+is used automatically when present. The shared Vulkan-Headers revision is
+cached under build/cache and checked against the package presentation baseline.
 
 Options:
   --with-32-bit          Build both the 64-bit and 32-bit host layers.
@@ -100,7 +101,19 @@ fi
 for command in cmake ninja "$compiler"; do
     if ! command -v "$command" >/dev/null 2>&1; then
         echo "Required command not found: $command" >&2
-        echo "Install the SteamOS build prerequisites in docs/BUILDING-FROM-SOURCE.md." >&2
+        echo "Run scripts/install-steamos-build-tools.sh --install on the SteamOS host." >&2
+        exit 1
+    fi
+done
+
+for header in \
+    /usr/include/gnu/stubs-64.h \
+    /usr/include/X11/X.h \
+    /usr/include/X11/Xlib.h \
+    /usr/include/xcb/xcb.h; do
+    if [[ ! -f "$header" ]]; then
+        echo "Required SteamOS development header not found: $header" >&2
+        echo "Run scripts/install-steamos-build-tools.sh --install on the SteamOS host." >&2
         exit 1
     fi
 done
@@ -115,12 +128,48 @@ fi
 
 if [[ "$build_32_bit" == true && ! -f /usr/include/gnu/stubs-32.h ]]; then
     echo "32-bit glibc development headers are missing: /usr/include/gnu/stubs-32.h" >&2
-    echo "On SteamOS, reinstall lib32-glibc (do not use --needed):" >&2
-    echo "  sudo steamos-readonly disable" >&2
-    echo "  sudo pacman -S lib32-glibc" >&2
-    echo "  sudo steamos-readonly enable" >&2
+    echo "Run scripts/install-steamos-build-tools.sh --install on the SteamOS host." >&2
     exit 1
 fi
+
+vulkan_headers_revision="$(tr -d '[:space:]' < "$repo_root/vulkan-headers-revision.txt")"
+if [[ ! "$vulkan_headers_revision" =~ ^(vulkan-sdk-|v)[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Invalid shared Vulkan-Headers revision: $vulkan_headers_revision" >&2
+    exit 1
+fi
+vulkan_headers_cache="$build_cache_root/vulkan-headers"
+vulkan_headers_source="$vulkan_headers_cache/$vulkan_headers_revision"
+# SDK branches can advance. Resolve them afresh and cache by commit; release
+# tags reuse their existing checkout after the first fetch.
+if [[ "$vulkan_headers_revision" == vulkan-sdk-* ||
+      ! -f "$vulkan_headers_source/include/vulkan/vulkan_core.h" ]]; then
+    if ! command -v git >/dev/null 2>&1; then
+        echo "Git is required to fetch the shared Vulkan-Headers revision." >&2
+        exit 1
+    fi
+    mkdir -p "$vulkan_headers_cache"
+    vulkan_headers_stage="$(mktemp -d "$vulkan_headers_cache/.stage.XXXXXX")"
+    trap 'rm -rf -- "$vulkan_headers_stage"' EXIT
+    git clone --depth=1 --branch "$vulkan_headers_revision" \
+        https://github.com/KhronosGroup/Vulkan-Headers.git \
+        "$vulkan_headers_stage/source"
+    resolved_vulkan_headers_commit="$(git -C "$vulkan_headers_stage/source" rev-parse HEAD)"
+    if [[ "$vulkan_headers_revision" == vulkan-sdk-* ]]; then
+        vulkan_headers_source="$vulkan_headers_cache/$vulkan_headers_revision.$resolved_vulkan_headers_commit"
+    fi
+    if [[ ! -e "$vulkan_headers_source" ]]; then
+        mv -- "$vulkan_headers_stage/source" "$vulkan_headers_source"
+    fi
+    rm -rf -- "$vulkan_headers_stage"
+    trap - EXIT
+fi
+if [[ ! -f "$vulkan_headers_source/include/vulkan/vulkan_core.h" ]]; then
+    echo "Cached Vulkan-Headers source is incomplete: $vulkan_headers_source" >&2
+    exit 1
+fi
+resolved_vulkan_headers_commit="$(git -C "$vulkan_headers_source" rev-parse HEAD)"
+vulkan_headers_include_dir="$vulkan_headers_source/include"
+echo "Using shared Vulkan-Headers $vulkan_headers_revision ($resolved_vulkan_headers_commit)."
 
 compiler_launcher=""
 if command -v ccache >/dev/null 2>&1; then
@@ -155,6 +204,8 @@ build_layer() {
         -DCMAKE_CXX_COMPILER_LAUNCHER="$compiler_launcher" \
         -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
         -DBUILD_TESTING=OFF \
+        -DMAKO_REQUIRE_NATIVE_PACKAGE_HEADERS=ON \
+        -DMAKO_VULKAN_HEADERS_INCLUDE_DIR="$vulkan_headers_include_dir" \
         -DMAKO_BUILD_VK_LAYER=ON \
         -DMAKO_BUILD_UI=OFF \
         -DMAKO_BUILD_CLI="$build_cli" \

@@ -96,6 +96,8 @@ Use `previous` for the immediately previous run, `previous-two` for the two prev
 
 Use `all` for the first report. Focused presets such as `startup`, `errors`, `scaling`, `adaptive`, `recovery`, `performance`, `layers`, and `hdr` are intended for requested follow-ups. Every preset retains the initial Gamescope VRR/Allow Tearing snapshot and live pacing-owner changes. The `recovery` and `performance` presets also include Gamescope focus changes for menu-related reports and retain recovery records from older builds. Run `/home/deck/.local/bin/mako-diagnostics --list` to see the complete preset list.
 
+The optional Gamescope VRR override runs in a separate systemd user service. Its transition-only decision and restoration records are in the user journal rather than this game log; after a Game Mode test, they can be reviewed from Desktop Mode with `journalctl --user -o short-iso | grep -F 'MAKO Renderer: Gamescope VRR lease'`.
+
 With Gamescope WSI disabled, a `spatial scaling surface bridge` record only shows that MAKO associated the game with Gamescope. To confirm that scaling actually ran, check that the same session reports different active source and presentation resolutions.
 
 ## 4. Restore normal launch settings

@@ -471,7 +471,7 @@ export const FlatpaksModal: FC<FlatpaksModalProps> = ({ closeModal }) => {
               </div>
               {t(
                 "FLATPAK_PREPARE_APPLICATION_DESC",
-                "Install the matching runtime extension, then prepare the app. Heroic and Lutris need a per-game wrapper; emulators are prepared app-wide. Open the launcher setup guide for steps.",
+                "Install the matching extension and prepare the app. Heroic/Lutris need a per-game wrapper; emulators apply app-wide. See launcher guide.",
               )}
             </div>
 
@@ -695,7 +695,7 @@ export const FlatpaksModal: FC<FlatpaksModalProps> = ({ closeModal }) => {
               >
                 {t(
                   "FLATPAK_STEAM_CONFIG_DESC",
-                  "Use this only for a manually added Steam shortcut whose original Target is /usr/bin/flatpak. Prepare that Flatpak application above first, then leave Start In and Launch Options unchanged. Heroic, Lutris, and EmuDeck have separate steps in the launcher setup guide.",
+                  "Only for manual Steam shortcuts originally targeting /usr/bin/flatpak. Prepare the app above; keep Start In and Launch Options. Heroic, Lutris, and EmuDeck use the launcher guide.",
                 )}
               </div>
               <div

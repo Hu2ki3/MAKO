@@ -22,6 +22,7 @@ from .config_schema_generated import (
 from .constants import (
     ARMADA_DEVICE_ENV,
     ARMADA_GAME_LAUNCH,
+    CLI_DIR,
     FLATPAK_IMPLICIT_LAYER_DIR,
     GAMESCOPE_WSI_MANIFEST_FILENAME_64,
     SPATIAL_SCALING_JSON_FILENAME,
@@ -80,6 +81,7 @@ class ConfigurationService(BaseService):
             config_dir=self.config_dir,
             config_file_path=self.config_file_path,
             local_share_dir=self.local_share_dir,
+            renderer_bin_dir=self.user_home / CLI_DIR,
             user_vulkan_layer_dir=self.user_vulkan_layer_dir,
             spatial_scaling_layer_dir=self.spatial_scaling_layer_dir,
             gamescope_wsi_compatibility_dir=(
