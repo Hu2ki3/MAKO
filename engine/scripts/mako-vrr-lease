@@ -24,6 +24,7 @@ import time
 
 POLL_SECONDS = 1.0
 HOLD_CHECK_SECONDS = 5.0
+RESTORE_ATTEMPTS = 5
 DISPLAY_FLAGS = re.compile(r"(?:^|\n)\s*-\s*Display Flags:\s*0x([0-9a-fA-F]+)(?:\s|$)")
 X_DISPLAY = re.compile(r":[0-9]+(?:\.[0-9]+)?\Z")
 X_CARDINAL = re.compile(r"^([A-Z_]+)\(CARDINAL\) = ([0-9]+)$", re.MULTILINE)
@@ -304,6 +305,21 @@ class VrrLease:
             return "write-not-verified"
 
 
+def restore_on_exit(lease: VrrLease, decisions: DecisionLog,
+                    original_display: tuple[int, int]) -> bool:
+    """Retry transient readback failures without holding the session lock forever."""
+    for attempt in range(RESTORE_ATTEMPTS):
+        if display_identity() != original_display:
+            return True  # Never restore into a replacement Gamescope session.
+        if lease.restore():
+            return True
+        decisions.record("restore-not-verified")
+        if attempt + 1 < RESTORE_ATTEMPTS:
+            time.sleep(POLL_SECONDS)
+    decisions.record("restore-unverified-at-exit")
+    return False
+
+
 def session_lock() -> int | None:
     runtime = os.environ.get("XDG_RUNTIME_DIR")
     display = os.environ.get("GAMESCOPE_WAYLAND_DISPLAY")
@@ -422,6 +438,7 @@ def main() -> int:
     decisions.record("watching")
     capability_check_at = 0.0
     capable: bool | None = None
+    restoration_failed = False
     try:
         while not STOP:
             if display_identity() != original_display:
@@ -483,16 +500,10 @@ def main() -> int:
             time.sleep(POLL_SECONDS)
     finally:
         if owns_lock and display_identity() == original_display:
-            while not lease.restore():
-                decisions.record("restore-not-verified")
-                # A transient Gamescope query failure must not strand the
-                # user's live setting when the game has already exited.
-                if display_identity() != original_display:
-                    break
-                time.sleep(1)
+            restoration_failed = not restore_on_exit(lease, decisions, original_display)
         decisions.record("stopped")
         os.close(lock_fd)
-    return 0
+    return 1 if restoration_failed else 0
 
 
 if __name__ == "__main__":

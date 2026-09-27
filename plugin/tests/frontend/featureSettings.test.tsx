@@ -93,7 +93,7 @@ describe("primary feature organization", () => {
 
     expect(screen.getByText("Image Processing")).toBeTruthy();
     const sharedPerformanceInfo = screen.getByText(
-      "Combining Frame Generation, Scaling, and Shaders may cost performance. Disable unused features; test Windowed and Fullscreen per game.",
+      "Combining Frame Generation, Scaling, and Shaders may cost performance. Disable unused features; changing display mode can change input resolution and GPU cost.",
     );
     expect(sharedPerformanceInfo.closest('[data-tone="info"]')).toBeTruthy();
     expect(

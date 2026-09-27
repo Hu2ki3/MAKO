@@ -278,7 +278,7 @@ printf '%s\n' \
   '> [!TIP]' \
   '> **Try the game’s V-Sync setting both on and off.** Neither setting is universally best: the result depends on the game, its FPS cap, VRR, and the compositor. Keep whichever option feels smoother and more responsive for that game.' \
   '' \
-  'Every game, renderer, and display setup behaves differently. Compare Fixed Frame Generation, Adaptive Frame Generation, and scaling-only operation one setting at a time. For scaling, use a display mode where Live Status shows Input smaller than Display; some games require Windowed mode because fullscreen or borderless keeps a display-sized input.' \
+  'Every game, renderer, and display setup behaves differently. Compare Fixed Frame Generation, Adaptive Frame Generation, and scaling-only operation one setting at a time. If Frame Generation, Scaling, or Shaders do not work, test Fullscreen, Borderless Fullscreen, and Windowed; none is universally best. For Scaling, also test in-game resolutions and check that Live Status shows Input smaller than Display. Changing display mode can change GPU cost.' \
   '' \
   '- **Adaptive target behaviour:** Adaptive varies the generated-frame count toward an average target. It cannot reduce a native frame rate already above that target, and the result still depends on the selected multiplier plus available GPU and compositor capacity.' \
   '- **Quality and latency tuning:** Higher multipliers and lower real-frame rates can increase ghosting and input latency. Smooth Cadence may improve motion consistency while reducing responsiveness, so compare the available choices per game.' \

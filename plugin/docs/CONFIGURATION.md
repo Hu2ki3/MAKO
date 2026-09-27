@@ -10,7 +10,7 @@ MAKO Decky saves settings automatically. Options marked **Restart** apply the ne
 4. Restart the game after changing any option marked **Restart**.
 5. Reopen MAKO Decky and check **Live Status** to confirm what is active.
 
-Test one feature at a time at first. Try the game's V-Sync setting both on and off and keep whichever feels smoother for that game.
+Test one feature at a time at first. If Frame Generation, Scaling, or Shaders do not work, try Fullscreen, Borderless Fullscreen, and Windowed; support varies by game. A display-mode change can also change the resolution MAKO processes. Try the game's V-Sync setting both on and off and keep whichever feels smoother for that game.
 
 ## Profiles
 
@@ -47,7 +47,7 @@ Turn on **Enable Scaling (Restart)** before starting the game. Gamescope/Game Mo
 | **LS1 Quality** | Highest-quality LS1 reconstruction | Licensed `Lossless.dll` |
 | **LS1 Performance** | Lower-cost LS1 reconstruction | Licensed `Lossless.dll` |
 
-Set Steam's **Game Resolution** to the display maximum, then choose a lower resolution inside the game. Scaling is active when **Live Status** shows an input resolution smaller than the display resolution. Some games require Windowed mode because fullscreen or borderless keeps a display-sized input.
+Set Steam's **Game Resolution** to the display maximum, then choose a lower resolution inside the game. Test the game's display modes and in-game resolutions until **Live Status** shows **Input** smaller than **Display**. The in-game resolution alone does not prove that MAKO receives a lower-resolution image.
 
 - **Scale Factor** targets output width and height from 1.0x to 2.0x the game render size. On fixed-size surfaces, MAKO requests a smaller render size to keep output fixed; on variable-size surfaces, it enlarges the game's requested image within display and GPU limits.
 - **Sharpness** controls reconstruction sharpening and is hidden for Native Resolution.

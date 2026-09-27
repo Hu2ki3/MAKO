@@ -224,7 +224,7 @@ void test_scaling_catalogs(const QByteArray& catalog, const QString& settings_fi
             QStringLiteral("Scaling Method"),
         "English scaling method has an unexpected label");
     require(english.value(QStringLiteral("scalingEnabledDesc")).toString() ==
-            QStringLiteral("Enable before launch for Lossless Scaling or MAKO Scaler; off disables scaling. Some games may require Windowed mode; Borderless Fullscreen may also work."),
+            QStringLiteral("Enable before launch for Lossless Scaling or MAKO Scaler; off disables scaling. Test Fullscreen, Borderless Fullscreen, or Windowed if Scaling does not work."),
         "English scaling help does not match the Decky guidance");
     require(english.value(QStringLiteral("scalingMethodDesc")).toString() ==
             QStringLiteral("Choose the scaling model. You can change it while the game is running."),
@@ -239,9 +239,9 @@ void test_scaling_catalogs(const QByteArray& catalog, const QString& settings_fi
             english.value(QStringLiteral("scalingFactorDesc")).toString()
                 .contains(QStringLiteral("If the game sets window size")) &&
             english.value(QStringLiteral("scalingFactorDesc")).toString()
-                .contains(QStringLiteral("try Windowed mode")) &&
+                .contains(QStringLiteral("test another display mode")) &&
             english.value(QStringLiteral("scalingFactorDesc")).toString()
-                .contains(QStringLiteral("fullscreen or borderless")),
+                .contains(QStringLiteral("input may already fill the display")),
         "English scale-factor help does not explain the display-sized input workaround");
     require(english.value(QStringLiteral("scalingSharpnessDesc")).toString() ==
             QStringLiteral("MAKO: 0–100% of its 3x sharpening baseline. LS1: one of five learned sharpness variants."),

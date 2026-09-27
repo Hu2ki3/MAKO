@@ -97,7 +97,7 @@ For manual profile editing and the full setting reference, see [Configuration](d
 ## In-game considerations
 
 - Try the game's V-Sync setting both on and off and keep the smoother option for that game.
-- For scaling, lower the game's input resolution before increasing MAKO's scale factor. Windowed mode may be required when fullscreen or borderless keeps a display-sized input.
+- For scaling, try different in-game resolutions and display modes. Check that the game presents a smaller input than the output; Fullscreen, Borderless Fullscreen, and Windowed can differ by game.
 - Change Frame Generation, scaling, and shader effects one at a time when checking image quality or performance.
 
 See [Scaling](docs/SCALING.md) for resolution and presentation details, or [Troubleshooting](docs/TROUBLESHOOTING.md) when MAKO does not activate or present correctly.

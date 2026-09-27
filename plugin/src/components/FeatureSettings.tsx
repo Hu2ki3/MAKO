@@ -49,7 +49,7 @@ export function FeatureSettings({
           <MakoInlineTip tone="info">
             {t(
               "IMAGE_PROCESSING_PERFORMANCE_INFO",
-              "Combining Frame Generation, Scaling, and Shaders may cost performance. Disable unused features; test Windowed and Fullscreen per game.",
+              "Combining Frame Generation, Scaling, and Shaders may cost performance. Disable unused features; changing display mode can change input resolution and GPU cost.",
             )}
           </MakoInlineTip>
         </div>

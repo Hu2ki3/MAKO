@@ -120,7 +120,7 @@ export function ScalingControl({
           description={
             t(
               "SCALING_ENABLED_DESC",
-              "Enable before launch for Lossless Scaling or MAKO Scaler; off disables scaling. Some games may require Windowed mode; Borderless Fullscreen may also work.",
+              "Enable before launch for Lossless Scaling or MAKO Scaler; off disables scaling. Test Fullscreen, Borderless Fullscreen, or Windowed if Scaling does not work.",
             )
           }
           checked={config.scaling_enabled}

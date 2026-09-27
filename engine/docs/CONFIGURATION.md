@@ -119,7 +119,7 @@ Under **Compatibility**, **Auto-disable Frame Generation by Refresh Rate** pause
 
 ## Desktop scaling and resolution
 
-MAKO scales the image size presented by the game, which may already include the game's own upscaling. Set Steam's **Game Resolution** to the display maximum, then select a lower in-game resolution. Some games require Windowed mode because fullscreen or borderless keeps a display-sized image.
+MAKO scales the image size presented by the game, which may already include the game's own upscaling. Set Steam's **Game Resolution** to the display maximum, then select a lower in-game resolution. Test Fullscreen, Borderless Fullscreen, and Windowed because the image each mode presents depends on the game. Check the actual source and presentation sizes in diagnostics; the in-game resolution alone does not prove MAKO receives a smaller image.
 
 On a fixed 1920×1080 surface, a 1.5x factor advertises a 1280×720 source. On a variable desktop surface, set the game itself to 1280×720 and use 1.5x to request 1920×1080 output. Raising the factor without lowering the game resolution enlarges the output and can increase GPU and memory cost.
 

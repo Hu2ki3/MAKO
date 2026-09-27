@@ -69,7 +69,7 @@ The project consists of two closely integrated components:
 > [!TIP]
 > **Try the game's V-Sync setting both on and off.** Neither setting is universally best: the result depends on the game, its FPS cap, VRR, and the compositor. Keep whichever option feels smoother and more responsive for that game.
 
-Every game and display behaves differently, so compare one setting at a time. For scaling, use a display mode where **Live Status** shows **Input** smaller than **Display**; some games require Windowed mode because fullscreen or borderless keeps a display-sized input. See the <a href="plugin/docs/CONFIGURATION.md" target="_blank" rel="noopener noreferrer">configuration guide</a> for which controls apply live and which require a restart.
+Every game and display behaves differently, so compare one setting at a time. If Frame Generation, Scaling, or Shaders do not work, try the game's Fullscreen, Borderless Fullscreen, and Windowed modes; none is universally best. For Scaling, also try different in-game resolutions and check that **Live Status** shows **Input** smaller than **Display**. Changing display mode can change the resolution MAKO processes and its GPU cost. See the <a href="plugin/docs/CONFIGURATION.md" target="_blank" rel="noopener noreferrer">configuration guide</a> for which controls apply live and which require a restart.
 
 ## Install and use
 

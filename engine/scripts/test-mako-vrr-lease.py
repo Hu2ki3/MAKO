@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 source = Path(__file__).with_name("mako-vrr-lease")
@@ -241,6 +241,34 @@ class VrrLeaseTests(unittest.TestCase):
             self.assertTrue(lease.restore())
             self.assertIsNone(lease.applied)
             self.assertEqual(write.call_args_list[-1].args, (True, False))
+
+    def test_exit_restoration_retries_transient_failure(self):
+        lease = SimpleNamespace(restore=Mock(side_effect=[False, True]))
+        with patch.object(module, "display_identity", return_value=(12, 34)), \
+             patch.object(module.time, "sleep") as sleep:
+            self.assertTrue(module.restore_on_exit(
+                lease, module.DecisionLog(), (12, 34)))
+        self.assertEqual(lease.restore.call_count, 2)
+        sleep.assert_called_once_with(module.POLL_SECONDS)
+
+    def test_exit_restoration_stops_after_bounded_failures(self):
+        lease = SimpleNamespace(restore=Mock(return_value=False))
+        output = io.StringIO()
+        with patch.object(module, "display_identity", return_value=(12, 34)), \
+             patch.object(module.time, "sleep") as sleep, \
+             patch.object(module.sys, "stderr", output):
+            self.assertFalse(module.restore_on_exit(
+                lease, module.DecisionLog(), (12, 34)))
+        self.assertEqual(lease.restore.call_count, module.RESTORE_ATTEMPTS)
+        self.assertEqual(sleep.call_count, module.RESTORE_ATTEMPTS - 1)
+        self.assertIn("decision=restore-unverified-at-exit", output.getvalue())
+
+    def test_exit_restoration_skips_replacement_session(self):
+        lease = SimpleNamespace(restore=Mock())
+        with patch.object(module, "display_identity", return_value=(12, 35)):
+            self.assertTrue(module.restore_on_exit(
+                lease, module.DecisionLog(), (12, 34)))
+        lease.restore.assert_not_called()
 
     def test_unverified_write_keeps_the_baseline_for_restoration(self):
         with patch.object(module, "read_vrr", side_effect=[(True, "ok"), (False, "ok")]), \
