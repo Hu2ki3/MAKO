@@ -41,7 +41,7 @@ if ((${#renderer_paths[@]} != 8)); then
   echo "The shared Renderer path contract is incomplete." >&2
   exit 1
 fi
-if ((${#vkbasalt_paths[@]} != 6)); then
+if ((${#vkbasalt_paths[@]} != 7)); then
   echo "The shared vkBasalt path contract is incomplete." >&2
   exit 1
 fi
@@ -59,6 +59,7 @@ vkbasalt_library32_relative_path="${vkbasalt_paths[2]}"
 vkbasalt_manifest_relative_path="${vkbasalt_paths[3]}"
 vkbasalt_manifest32_relative_path="${vkbasalt_paths[4]}"
 vkbasalt_shader_relative_path="${vkbasalt_paths[5]}"
+vkbasalt_profile_shader_relative_path="${vkbasalt_paths[6]}"
 flatpak_runtime_summary="$(
   python3 "$project_dir/scripts/read_flatpak_runtime_contract.py" summary
 )"
@@ -569,15 +570,18 @@ fi
 
 if [[ "$deploy_backend" == true || "$deploy_engine" == true ||
       "$deploy_engine_32" == true ]]; then
-  installed_vkbasalt_shader_dir="$HOME/$vkbasalt_shader_relative_path"
   source_vkbasalt_shader_dir="$project_dir/py_modules/mako_plugin/vkbasalt_shaders"
-  if [[ -d "$installed_vkbasalt_shader_dir" ]]; then
-    while IFS= read -r -d '' shader_asset; do
-      copy_file "$shader_asset" \
-        "$installed_vkbasalt_shader_dir/${shader_asset##*/}"
-    done < <(find "$source_vkbasalt_shader_dir" -maxdepth 1 -type f -print0)
-    echo "Deployed the complete private vkBasalt shader catalog."
-  fi
+  for shader_relative_path in "$vkbasalt_shader_relative_path" \
+      "$vkbasalt_profile_shader_relative_path"; do
+    installed_vkbasalt_shader_dir="$HOME/$shader_relative_path"
+    if [[ -d "$installed_vkbasalt_shader_dir" ]]; then
+      while IFS= read -r -d '' shader_asset; do
+        copy_file "$shader_asset" \
+          "$installed_vkbasalt_shader_dir/${shader_asset##*/}"
+      done < <(find "$source_vkbasalt_shader_dir" -maxdepth 1 -type f -print0)
+      echo "Deployed the complete private vkBasalt shader catalog to $installed_vkbasalt_shader_dir."
+    fi
+  done
 fi
 
 if [[ -n "$built_layer_64" ]]; then

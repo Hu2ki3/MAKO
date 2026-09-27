@@ -10,6 +10,7 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN_ROOT))
 
 from py_modules.mako_plugin.constants import (  # noqa: E402
+    CONFIG_DIR,
     FLATPAK_RUNTIME_BUNDLES,
     LIB_FILENAME,
     LOCAL_LIB,
@@ -24,6 +25,7 @@ from py_modules.mako_plugin.constants import (  # noqa: E402
     VKBASALT_LIB_FILENAME,
     VKBASALT_MANIFEST_FILENAME_32,
     VKBASALT_MANIFEST_FILENAME_64,
+    VKBASALT_PROFILE_CONFIG_DIRNAME,
     VKBASALT_SHADER_DIR,
 )
 
@@ -80,6 +82,7 @@ def main() -> None:
             f"{VKBASALT_LAYER_DIR}/{VKBASALT_MANIFEST_FILENAME_64}",
             f"{VKBASALT_LAYER_DIR}/{VKBASALT_MANIFEST_FILENAME_32}",
             VKBASALT_SHADER_DIR,
+            f"{CONFIG_DIR}/{VKBASALT_PROFILE_CONFIG_DIRNAME}/shaders",
             sep="\n",
         )
 

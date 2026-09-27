@@ -20,38 +20,40 @@ uniform float radius2 < ui_type = "slider";
 
 #include "ReShade.fxh"
 
+float3 HDRRing(float2 texcoord, float radius)
+{
+    float2 pixel = radius * BUFFER_PIXEL_SIZE;
+    float3 sum = tex2D(ReShade::BackBuffer, texcoord + float2( 1.5, -1.5) * pixel).rgb;
+    sum += tex2D(ReShade::BackBuffer, texcoord + float2(-1.5, -1.5) * pixel).rgb;
+    sum += tex2D(ReShade::BackBuffer, texcoord + float2( 1.5,  1.5) * pixel).rgb;
+    sum += tex2D(ReShade::BackBuffer, texcoord + float2(-1.5,  1.5) * pixel).rgb;
+    sum += tex2D(ReShade::BackBuffer, texcoord + float2( 0.0, -2.5) * pixel).rgb;
+    sum += tex2D(ReShade::BackBuffer, texcoord + float2( 0.0,  2.5) * pixel).rgb;
+    sum += tex2D(ReShade::BackBuffer, texcoord + float2(-2.5,  0.0) * pixel).rgb;
+    sum += tex2D(ReShade::BackBuffer, texcoord + float2( 2.5,  0.0) * pixel).rgb;
+    return sum;
+}
+
 float3 HDRPass(float4 vpos : SV_Position, float2 texcoord : TexCoord) : SV_Target
 {
-	float3 color = tex2D(ReShade::BackBuffer, texcoord).rgb;
-
-	float3 bloom_sum1 = tex2D(ReShade::BackBuffer, texcoord + float2(1.5, -1.5) * radius1 * BUFFER_PIXEL_SIZE).rgb;
-	bloom_sum1 += tex2D(ReShade::BackBuffer, texcoord + float2(-1.5, -1.5) * radius1 * BUFFER_PIXEL_SIZE).rgb;
-	bloom_sum1 += tex2D(ReShade::BackBuffer, texcoord + float2( 1.5,  1.5) * radius1 * BUFFER_PIXEL_SIZE).rgb;
-	bloom_sum1 += tex2D(ReShade::BackBuffer, texcoord + float2(-1.5,  1.5) * radius1 * BUFFER_PIXEL_SIZE).rgb;
-	bloom_sum1 += tex2D(ReShade::BackBuffer, texcoord + float2( 0.0, -2.5) * radius1 * BUFFER_PIXEL_SIZE).rgb;
-	bloom_sum1 += tex2D(ReShade::BackBuffer, texcoord + float2( 0.0,  2.5) * radius1 * BUFFER_PIXEL_SIZE).rgb;
-	bloom_sum1 += tex2D(ReShade::BackBuffer, texcoord + float2(-2.5,  0.0) * radius1 * BUFFER_PIXEL_SIZE).rgb;
-	bloom_sum1 += tex2D(ReShade::BackBuffer, texcoord + float2( 2.5,  0.0) * radius1 * BUFFER_PIXEL_SIZE).rgb;
-
-	bloom_sum1 *= 0.005;
-
-	float3 bloom_sum2 = tex2D(ReShade::BackBuffer, texcoord + float2(1.5, -1.5) * radius2 * BUFFER_PIXEL_SIZE).rgb;
-	bloom_sum2 += tex2D(ReShade::BackBuffer, texcoord + float2(-1.5, -1.5) * radius2 * BUFFER_PIXEL_SIZE).rgb;
-	bloom_sum2 += tex2D(ReShade::BackBuffer, texcoord + float2( 1.5,  1.5) * radius2 * BUFFER_PIXEL_SIZE).rgb;
-	bloom_sum2 += tex2D(ReShade::BackBuffer, texcoord + float2(-1.5,  1.5) * radius2 * BUFFER_PIXEL_SIZE).rgb;
-	bloom_sum2 += tex2D(ReShade::BackBuffer, texcoord + float2( 0.0, -2.5) * radius2 * BUFFER_PIXEL_SIZE).rgb;	
-	bloom_sum2 += tex2D(ReShade::BackBuffer, texcoord + float2( 0.0,  2.5) * radius2 * BUFFER_PIXEL_SIZE).rgb;
-	bloom_sum2 += tex2D(ReShade::BackBuffer, texcoord + float2(-2.5,  0.0) * radius2 * BUFFER_PIXEL_SIZE).rgb;
-	bloom_sum2 += tex2D(ReShade::BackBuffer, texcoord + float2( 2.5,  0.0) * radius2 * BUFFER_PIXEL_SIZE).rgb;
-
-	bloom_sum2 *= 0.010;
-
-	float dist = radius2 - radius1;
-	float3 HDR = (color + (bloom_sum2 - bloom_sum1)) * dist;
-	float3 blend = HDR + color;
-	color = pow(abs(blend), abs(HDRPower)) + HDR; // pow - don't use fractions for HDRpower
-	
-	return saturate(color);
+    float3 color = tex2D(ReShade::BackBuffer, texcoord).rgb;
+    float dist = radius2 - radius1;
+    float3 bloomDelta;
+    if (abs(dist) <= 0.1 && (2.0 * radius2 - radius1) >= 0.0)
+    {
+        // First-order equivalent of 0.010 * ring(radius2) - 0.005 * ring(radius1).
+        // The default radii differ by only 0.077, so one ring is sufficient.
+        bloomDelta = 0.005 * HDRRing(texcoord, 2.0 * radius2 - radius1);
+    }
+    else
+    {
+        bloomDelta = 0.010 * HDRRing(texcoord, radius2)
+                   - 0.005 * HDRRing(texcoord, radius1);
+    }
+    float3 HDR = (color + bloomDelta) * dist;
+    float3 blend = HDR + color;
+    color = pow(abs(blend), abs(HDRPower)) + HDR;
+    return saturate(color);
 }
 
 technique HDR
