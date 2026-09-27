@@ -93,6 +93,7 @@ namespace {
     constexpr auto adaptiveRecoveryStabilizationDuration = std::chrono::seconds(3);
     constexpr auto adaptiveRampEvaluationDuration = std::chrono::seconds(1);
     constexpr auto adaptiveTargetDeficitDuration = std::chrono::seconds(1);
+    constexpr double adaptiveTargetSatisfiedRatio = 0.98;
     constexpr auto adaptiveTargetConstraintDiagnosticDuration =
         std::chrono::seconds(2);
     constexpr auto adaptiveNearTargetNativeHoldDuration =
@@ -2605,8 +2606,12 @@ MAKO_ADAPTIVE_STAGE_INLINE void AdaptiveScheduler::updateGenerationLimit(
     // falls far enough that this capacity is no longer sufficient.
     const double validatedOutputFps = baseFps *
         static_cast<double>(this->state.outputPlanner.generationLimit + 1);
+    // A current rung within ordinary cadence noise of the target does not
+    // need another generated output. Recheck this before every promotion so
+    // a recovered source cancels an earlier transient target deficit.
     const bool targetSatisfied = validatedOutputFps >=
-        static_cast<double>(this->config.targetFps);
+        static_cast<double>(this->config.targetFps) *
+            adaptiveTargetSatisfiedRatio;
     if (targetSatisfied) {
         this->state.menuReturnLoadGuard.reset();
         this->state.ramp.targetDeficitSince.reset();

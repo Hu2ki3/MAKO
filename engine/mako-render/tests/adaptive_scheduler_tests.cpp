@@ -1922,6 +1922,36 @@ namespace {
             "the scheduler did not validate available 3x headroom near target");
     }
 
+    void testNearTargetRungDoesNotProbeHigherMultiplier() {
+        constexpr uint32_t targetFps = 120;
+        for (size_t higherMultiplier = 2; higherMultiplier <= 5;
+                ++higherMultiplier) {
+            const double lowerRungBaseFps =
+                static_cast<double>(targetFps) /
+                static_cast<double>(higherMultiplier - 1);
+            Harness nearTarget(targetFps, higherMultiplier, false,
+                AdaptiveRecoveryPolicy::OrderedSdr, false, 2s, targetFps,
+                false);
+            nearTarget.start();
+            nearTarget.runAtFps(lowerRungBaseFps * 0.995, 12s);
+            require(nearTarget.scheduler.snapshot().validatedGenerationLimit ==
+                    higherMultiplier - 2 &&
+                    !nearTarget.scheduler.snapshot().rampEvaluationActive,
+                "near-target Adaptive rung probed a higher multiplier at " +
+                    std::to_string(higherMultiplier) + "x");
+
+            Harness meaningfulDeficit(targetFps, higherMultiplier, false,
+                AdaptiveRecoveryPolicy::OrderedSdr, false, 2s, targetFps,
+                false);
+            meaningfulDeficit.start();
+            meaningfulDeficit.runAtFps(lowerRungBaseFps * 0.97, 12s);
+            require(meaningfulDeficit.scheduler.snapshot().
+                    validatedGenerationLimit == higherMultiplier - 1,
+                "meaningful target deficit could not validate " +
+                    std::to_string(higherMultiplier) + "x");
+        }
+    }
+
     void testMultiplierCeilingDeficitIsReportedOnce() {
         Harness harness(120, 2, false,
             AdaptiveRecoveryPolicy::OrderedSdr);
@@ -4069,6 +4099,7 @@ int main() {
         {"isolated delivery miss keeps ramp", testIsolatedGeneratedFrameMissDoesNotRejectRamp},
         {"persistent delivery loss rejects ramp", testPersistentGeneratedFrameMissesRejectRamp},
         {"escalation closes 95-percent target gap", testEscalationClosesNinetyFivePercentTargetGap},
+        {"near-target Adaptive rung does not probe higher multiplier", testNearTargetRungDoesNotProbeHigherMultiplier},
         {"multiplier ceiling deficit is reported once", testMultiplierCeilingDeficitIsReportedOnce},
         {"4x timestamps remain evenly spaced", testFourXPlanUsesEvenInterpolationTimestamps},
         {"5x timestamps remain evenly spaced", testFiveXPlanUsesEvenInterpolationTimestamps},
