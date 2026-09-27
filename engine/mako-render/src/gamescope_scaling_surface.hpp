@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 #include <vulkan/vulkan_core.h>
 
 struct VkXcbSurfaceCreateInfoKHR;
@@ -97,6 +98,12 @@ namespace mako::layer {
         /// nullopt means this adapter does not own the surface.
         [[nodiscard]] std::optional<VkResult> applicationCapabilities(
             VkSurfaceKHR surface, VkSurfaceCapabilitiesKHR& capabilities) const;
+        /// Preserve the X11 format order while exposing only format/color-space
+        /// pairs also supported by the private Wayland surface. A failed proof
+        /// leaves the lower driver's list intact.
+        [[nodiscard]] std::optional<std::vector<VkSurfaceFormatKHR>> applicationFormats(
+            VkPhysicalDevice physicalDevice, VkSurfaceKHR surface,
+            PFN_vkGetPhysicalDeviceSurfaceFormatsKHR lowerFormats) const;
 
     private:
         struct Impl;

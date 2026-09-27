@@ -2562,6 +2562,44 @@ namespace {
             "rejected 3x workload did not retain the proven 2x level");
     }
 
+    void testAdaptiveHigherLoadNeedsMeaningfulNetGain() {
+        for (const auto [probeFps, shouldAccept] : {
+                std::pair{30.0, false}, std::pair{32.0, true}}) {
+            Harness harness(
+                120, 3, false, AdaptiveRecoveryPolicy::OrderedSdr,
+                false, 2s, 120, false
+            );
+            harness.start();
+            for (size_t frame = 0; frame < 900 &&
+                    !harness.scheduler.snapshot().rampEvaluationActive;
+                    ++frame)
+                harness.frameAtFps(60.0);
+            require(harness.scheduler.snapshot().rampEvaluationActive,
+                "precondition failed: 2x probe did not begin");
+            while (harness.scheduler.snapshot().rampEvaluationActive)
+                harness.frameAtFps(40.0);
+            require(harness.scheduler.snapshot().validatedGenerationLimit == 1,
+                "precondition failed: 40 FPS 2x load was not validated");
+
+            for (size_t frame = 0; frame < 900 &&
+                    !harness.scheduler.snapshot().rampEvaluationActive;
+                    ++frame)
+                harness.frameAtFps(40.0);
+            require(harness.scheduler.snapshot().rampEvaluationActive &&
+                    harness.scheduler.snapshot().generationLimit == 2,
+                "precondition failed: 3x probe did not begin");
+            while (harness.scheduler.snapshot().rampEvaluationActive)
+                harness.frameAtFps(probeFps);
+
+            const auto* result = harness.diagnostics.last("ramp-result");
+            require(result && result->accepted == shouldAccept &&
+                    harness.scheduler.snapshot().validatedGenerationLimit ==
+                        (shouldAccept ? 2u : 1u),
+                "3x workload decision did not distinguish a marginal "
+                "40-to-30 FPS trade from a useful 40-to-32 FPS trade");
+        }
+    }
+
     void testConfirmedFocusReturnRetainsProvenLevel() {
         for (const bool smooth : {false, true}) {
             Harness harness(120, 3, smooth, AdaptiveRecoveryPolicy::OrderedSdr);
@@ -4123,6 +4161,7 @@ int main() {
         {"counterproductive first step cannot escalate", testCounterproductiveFirstStepNeverEscalates},
         {"rejected higher level backs off", testRejectedHigherLevelRetainsProvenLoadAndBacksOff},
         {"ordered SDR rejects unpaid below-target 3x", testOrderedSdrRejectsUnpaidHigherLevelBelowTarget},
+        {"Adaptive higher load needs meaningful net gain", testAdaptiveHigherLoadNeedsMeaningfulNetGain},
         {"confirmed focus return has bounded fast resume", testConfirmedFocusReturnBoundedFastResume},
         {"menu return holds target-proven lower load", testMenuReturnHoldsTargetProvenLowerMultiplier},
         {"focus return retains conservative fallbacks", testFocusReturnRetainsConservativeFallbacks},

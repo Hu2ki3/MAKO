@@ -39,10 +39,9 @@ namespace {
     constexpr double adaptiveTransientFastBurstTargetRatio = 2.0;
     // Compare adjacent workloads in frame-rate units rather than accepting a
     // device-specific percentage boundary. Extra generated work is useful
-    // only when its displayed-FPS gain pays for every real FPS it costs. This
-    // makes promotion monotonic across GPUs, resolutions, scalers and external
-    // post-processing without treating a slightly different ratio as a new
-    // healthy baseline.
+    // only when its displayed-FPS gain pays for every real FPS it costs.
+    // Higher rungs also need a small target-relative margin: near break-even
+    // measurements can otherwise accept a large real-frame loss due to noise.
     struct AdaptiveLoadOutcome {
         double baseFps{0.0};
         double outputFps{0.0};
@@ -61,6 +60,7 @@ namespace {
     }
 
     [[nodiscard]] bool adaptiveHigherLoadEarnsItsRealFrameCost(
+            const uint32_t targetFps, const size_t testedLimit,
             const AdaptiveLoadOutcome lower,
             const AdaptiveLoadOutcome higher) {
         const double outputGain = higher.outputFps - lower.outputFps;
@@ -73,7 +73,12 @@ namespace {
         });
         const double roundingTolerance =
             std::numeric_limits<double>::epsilon() * comparisonScale * 8.0;
-        return outputGain + roundingTolerance >= realFrameCost;
+        constexpr double minimumNetOutputGainRatio = 0.02;
+        const double margin = testedLimit > 1
+            ? static_cast<double>(targetFps) * minimumNetOutputGainRatio
+            : 0.0;
+        return outputGain + roundingTolerance >= realFrameCost +
+            margin;
     }
 
     constexpr double adaptiveStableCadenceMaximumProbeOvershootRatio = 1.40;
@@ -2521,6 +2526,7 @@ MAKO_ADAPTIVE_STAGE_INLINE void AdaptiveScheduler::updateGenerationLimit(
         const bool deliveryHealthy = this->state.ramp.delivery.healthy();
         const bool accepted = deliveryHealthy &&
             adaptiveHigherLoadEarnsItsRealFrameCost(
+                this->config.targetFps, testedLimit,
                 previousOutcome, currentOutcome
             );
 

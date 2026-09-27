@@ -2,6 +2,7 @@
 
 #include "gamescope_scaling_surface.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <chrono>
@@ -109,10 +110,10 @@ struct GamescopeScalingSurface::Impl {
 
     // Minimal wire subset of Gamescope's MIT-licensed swapchain protocol at
     // 2d217a16c7e5b56c7417257279bf102320cff024. Association plus create-time
-    // swapchain feedback are used. Ordered combined delivery also moves its
-    // FIFO constraint from the lower Wayland WSI to this compositor protocol;
-    // timing, limiter and HDR control remain inactive. All v1 events are
-    // declared so unsolicited feedback is consumed without retaining history.
+    // swapchain feedback are used. Ordered combined delivery keeps FIFO in
+    // the lower Wayland WSI; timing, limiter and HDR control remain inactive.
+    // All v1 events are declared so unsolicited feedback is consumed without
+    // retaining history.
     // See THIRD_PARTY_NOTICES.md.
     std::array<const wl_interface*, 2> createTypes{};
     std::array<wl_message, 2> factoryRequests{{
@@ -150,8 +151,12 @@ struct GamescopeScalingSurface::Impl {
     struct Surface {
         Impl* owner{};
         wl_proxy* surface{};
+        VkInstance instance{VK_NULL_HANDLE};
+        PFN_vkGetInstanceProcAddr next{};
+        Display* xlibDisplay{};
         uint32_t server{};
         uint32_t window{};
+        bool formatPolicyLogged{};
         xcb_connection_t* connection{};
         std::unordered_map<VkSwapchainKHR, std::unique_ptr<Content>> contents;
         ~Surface() {
@@ -366,7 +371,8 @@ struct GamescopeScalingSurface::Impl {
 
     std::optional<VkResult> create(VkInstance instance,
             PFN_vkGetInstanceProcAddr next, xcb_connection_t* connection,
-            const uint32_t window, const VkAllocationCallbacks* allocator,
+            Display* xlibDisplay, const uint32_t window,
+            const VkAllocationCallbacks* allocator,
             VkSurfaceKHR* output) {
         if (!ready || !connection || !window || !output)
             return std::nullopt;
@@ -387,6 +393,9 @@ struct GamescopeScalingSurface::Impl {
 
         auto state = std::make_unique<Surface>();
         state->owner = this;
+        state->instance = instance;
+        state->next = next;
+        state->xlibDisplay = xlibDisplay;
         state->server = *server;
         state->window = window;
         state->connection = connection;
@@ -461,7 +470,8 @@ std::optional<VkResult> GamescopeScalingSurface::create(VkInstance instance,
     const std::lock_guard lock(impl->mutex);
     if (info.pNext || info.flags)
         return std::nullopt;
-    return impl->create(instance, next, info.connection, info.window, allocator, surface);
+    return impl->create(instance, next, info.connection, nullptr, info.window,
+        allocator, surface);
 }
 
 std::optional<VkResult> GamescopeScalingSurface::create(VkInstance instance,
@@ -477,7 +487,7 @@ std::optional<VkResult> GamescopeScalingSurface::create(VkInstance instance,
     }
     if (!impl->getXcbConnection)
         return std::nullopt;
-    return impl->create(instance, next, impl->getXcbConnection(info.dpy),
+    return impl->create(instance, next, impl->getXcbConnection(info.dpy), info.dpy,
         static_cast<uint32_t>(info.window), allocator, surface);
 }
 
@@ -587,6 +597,115 @@ std::optional<VkResult> GamescopeScalingSurface::applicationCapabilities(
     capabilities.minImageExtent = extent;
     capabilities.maxImageExtent = extent;
     return VK_SUCCESS;
+}
+
+std::optional<std::vector<VkSurfaceFormatKHR>>
+GamescopeScalingSurface::applicationFormats(
+        const VkPhysicalDevice physicalDevice, const VkSurfaceKHR surface,
+        const PFN_vkGetPhysicalDeviceSurfaceFormatsKHR lowerFormats) const {
+    const std::lock_guard lock(impl->mutex);
+    const auto found = impl->surfaces.find(surface);
+    if (found == impl->surfaces.end() || !lowerFormats)
+        return std::nullopt;
+    auto& state = *found->second;
+    const auto enumerate = [&](const VkSurfaceKHR handle)
+            -> std::optional<std::vector<VkSurfaceFormatKHR>> {
+        for (uint32_t attempt = 0; attempt < 3; ++attempt) {
+            uint32_t count{};
+            if (lowerFormats(physicalDevice, handle, &count, nullptr) != VK_SUCCESS ||
+                    count == 0 || count > 256)
+                return std::nullopt;
+            std::vector<VkSurfaceFormatKHR> formats(count);
+            const auto result = lowerFormats(physicalDevice, handle, &count,
+                formats.data());
+            if (result == VK_SUCCESS) {
+                formats.resize(count);
+                return formats;
+            }
+            if (result != VK_INCOMPLETE)
+                return std::nullopt;
+        }
+        return std::nullopt;
+    };
+    const auto waylandFormats = enumerate(surface);
+    if (!waylandFormats)
+        return std::nullopt;
+
+    const auto destroy = reinterpret_cast<PFN_vkDestroySurfaceKHR>(
+        state.next(state.instance, "vkDestroySurfaceKHR"));
+    if (!destroy)
+        return std::nullopt;
+    VkSurfaceKHR nativeSurface{VK_NULL_HANDLE};
+    VkResult result = VK_ERROR_EXTENSION_NOT_PRESENT;
+    if (state.xlibDisplay) {
+        const auto create = reinterpret_cast<PFN_vkCreateXlibSurfaceKHR>(
+            state.next(state.instance, "vkCreateXlibSurfaceKHR"));
+        if (create) {
+            const VkXlibSurfaceCreateInfoKHR info{
+                .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
+                .dpy = state.xlibDisplay,
+                .window = state.window,
+            };
+            result = create(state.instance, &info, nullptr, &nativeSurface);
+        }
+    } else {
+        const auto create = reinterpret_cast<PFN_vkCreateXcbSurfaceKHR>(
+            state.next(state.instance, "vkCreateXcbSurfaceKHR"));
+        if (create) {
+            const VkXcbSurfaceCreateInfoKHR info{
+                .sType = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
+                .connection = state.connection,
+                .window = state.window,
+            };
+            result = create(state.instance, &info, nullptr, &nativeSurface);
+        }
+    }
+    if (result != VK_SUCCESS || nativeSurface == VK_NULL_HANDLE)
+        return std::nullopt;
+    struct NativeSurfaceGuard {
+        VkInstance instance;
+        VkSurfaceKHR surface;
+        PFN_vkDestroySurfaceKHR destroy;
+        ~NativeSurfaceGuard() { destroy(instance, surface, nullptr); }
+    } nativeGuard{state.instance, nativeSurface, destroy};
+    const auto nativeFormats = enumerate(nativeSurface);
+    if (!nativeFormats)
+        return std::nullopt;
+
+    const auto anyFormat = [](const std::vector<VkSurfaceFormatKHR>& formats) {
+        return formats.size() == 1 &&
+            formats.front().format == VK_FORMAT_UNDEFINED;
+    };
+    std::vector<VkSurfaceFormatKHR> exposed;
+    if (anyFormat(*nativeFormats)) {
+        exposed = *waylandFormats;
+    } else if (anyFormat(*waylandFormats)) {
+        exposed = *nativeFormats;
+    } else {
+        for (const auto& native : *nativeFormats) {
+            if (std::ranges::any_of(*waylandFormats,
+                    [&](const VkSurfaceFormatKHR& wayland) {
+                        return native.format == wayland.format &&
+                            native.colorSpace == wayland.colorSpace;
+                    }) && std::ranges::none_of(exposed,
+                    [&](const VkSurfaceFormatKHR& selected) {
+                        return native.format == selected.format &&
+                            native.colorSpace == selected.colorSpace;
+                    })) {
+                exposed.push_back(native);
+            }
+        }
+    }
+    if (!state.formatPolicyLogged) {
+        state.formatPolicyLogged = true;
+        std::cerr << "MAKO Renderer: spatial scaling surface formats: "
+                  << "native=" << nativeFormats->size()
+                  << "; wayland=" << waylandFormats->size()
+                  << "; shared=" << exposed.size()
+                  << "; action=" << (exposed.empty() ? "wayland-fallback" : "intersection")
+                  << '\n';
+    }
+    return exposed.empty() ? waylandFormats : std::optional{std::move(exposed)};
 }
 
 bool GamescopeScalingSurface::preparePresent(

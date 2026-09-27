@@ -2,6 +2,7 @@
 
 #include "gamescope_scaling_surface.hpp"
 #include "spatial_scaling_policy.hpp"
+#include <algorithm>
 #include <X11/Xlib.h>
 #include <xcb/xcb.h>
 #include <vulkan/vulkan_xcb.h>
@@ -39,7 +40,14 @@ namespace {
         }
     }
     bool failVulkan{};
+    bool failNativeSurface{};
+    int nativeSurfacesDestroyed{};
     const VkAllocationCallbacks* lastAllocator{};
+    VkSurfaceKHR testSurface(const uint64_t value) {
+        VkSurfaceKHR surface{};
+        std::memcpy(&surface, &value, sizeof(surface));
+        return surface;
+    }
     VkResult VKAPI_PTR createWayland(VkInstance, const VkWaylandSurfaceCreateInfoKHR* info,
             const VkAllocationCallbacks* allocator, VkSurfaceKHR* surface) {
         expect(info->sType == VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR &&
@@ -52,10 +60,60 @@ namespace {
         std::memcpy(surface, &nextSurface, sizeof(*surface));
         return VK_SUCCESS;
     }
-    void VKAPI_PTR destroySurface(VkInstance, VkSurfaceKHR, const VkAllocationCallbacks*) {}
+    VkResult VKAPI_PTR createXcb(VkInstance, const VkXcbSurfaceCreateInfoKHR* info,
+            const VkAllocationCallbacks* allocator, VkSurfaceKHR* surface) {
+        expect(info->window == 71 && info->connection && !allocator,
+            "temporary XCB surface must match the application window");
+        if (failNativeSurface)
+            return VK_ERROR_INITIALIZATION_FAILED;
+        *surface = testSurface(9001);
+        return VK_SUCCESS;
+    }
+    VkResult VKAPI_PTR createXlib(VkInstance, const VkXlibSurfaceCreateInfoKHR* info,
+            const VkAllocationCallbacks* allocator, VkSurfaceKHR* surface) {
+        expect(info->window == 71 && info->dpy && !allocator,
+            "temporary Xlib surface must match the application window");
+        *surface = testSurface(9002);
+        return VK_SUCCESS;
+    }
+    void VKAPI_PTR destroySurface(VkInstance, VkSurfaceKHR surface,
+            const VkAllocationCallbacks* allocator) {
+        if (surface == testSurface(9001) || surface == testSurface(9002)) {
+            expect(!allocator, "temporary surface must use its original allocator");
+            ++nativeSurfacesDestroyed;
+        }
+    }
+    VkResult VKAPI_PTR surfaceFormats(VkPhysicalDevice, VkSurfaceKHR surface,
+            uint32_t* count, VkSurfaceFormatKHR* formats) {
+        const VkSurfaceFormatKHR native[]{
+            {VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR},
+            {VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR},
+        };
+        const VkSurfaceFormatKHR wayland[]{
+            {VK_FORMAT_R16G16B16A16_SFLOAT, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR},
+            {VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR},
+            {VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR},
+        };
+        const bool nativeQuery = surface == testSurface(9001) ||
+            surface == testSurface(9002);
+        const auto& selected = nativeQuery ? native : wayland;
+        const uint32_t available = nativeQuery ? 2 : 3;
+        if (!formats) {
+            *count = available;
+            return VK_SUCCESS;
+        }
+        const uint32_t written = std::min(*count, available);
+        std::memcpy(formats, selected, written * sizeof(VkSurfaceFormatKHR));
+        *count = written;
+        return written < available ? VK_INCOMPLETE : VK_SUCCESS;
+    }
     PFN_vkVoidFunction VKAPI_PTR next(VkInstance, const char* name) {
         if (std::strcmp(name, "vkCreateWaylandSurfaceKHR") == 0)
             return reinterpret_cast<PFN_vkVoidFunction>(createWayland);
+        if (std::strcmp(name, "vkCreateXcbSurfaceKHR") == 0)
+            return reinterpret_cast<PFN_vkVoidFunction>(createXcb);
+        if (std::strcmp(name, "vkCreateXlibSurfaceKHR") == 0)
+            return reinterpret_cast<PFN_vkVoidFunction>(createXlib);
         if (std::strcmp(name, "vkDestroySurfaceKHR") == 0)
             return reinterpret_cast<PFN_vkVoidFunction>(destroySurface);
         return nullptr;
@@ -193,6 +251,21 @@ int main() {
         VkAllocationCallbacks allocator{};
         expect(bridge.create(VK_NULL_HANDLE, next, info, &allocator, &surface) == VK_SUCCESS, "create private surface");
         expect(lastAllocator == &allocator && bridge.owns(surface), "surface allocator/ownership");
+        expect(!bridge.applicationFormats(VK_NULL_HANDLE, VK_NULL_HANDLE,
+            surfaceFormats), "unowned surface formats must pass through");
+        const int destroyedBeforeFormats = nativeSurfacesDestroyed;
+        const auto applicationFormats = bridge.applicationFormats(
+            VK_NULL_HANDLE, surface, surfaceFormats);
+        expect(applicationFormats && applicationFormats->size() == 2 &&
+            (*applicationFormats)[0].format == VK_FORMAT_B8G8R8A8_UNORM &&
+            (*applicationFormats)[1].format == VK_FORMAT_R8G8B8A8_UNORM &&
+            nativeSurfacesDestroyed == destroyedBeforeFormats + 1,
+            "bridge must expose shared formats in the original X11 order");
+        failNativeSurface = true;
+        expect(!bridge.applicationFormats(VK_NULL_HANDLE, surface, surfaceFormats) &&
+            nativeSurfacesDestroyed == destroyedBeforeFormats + 1,
+            "failed native format proof must leave driver formats untouched");
+        failNativeSurface = false;
         const int surfaceObjects = mako_test_surface_objects();
         const auto feedbackInfo = swapchainInfo(surface);
         for (int mode : {7, 8}) {
@@ -282,6 +355,11 @@ int main() {
             .dpy = reinterpret_cast<Display*>(1), .window = 71,
         };
         expect(bridge.create(VK_NULL_HANDLE, next, xlib, nullptr, &replacement) == VK_SUCCESS, "Xlib replacement surface");
+        const auto xlibFormats = bridge.applicationFormats(VK_NULL_HANDLE,
+            replacement, surfaceFormats);
+        expect(xlibFormats && xlibFormats->size() == 2 &&
+            xlibFormats->front().format == VK_FORMAT_B8G8R8A8_UNORM,
+            "Xlib bridge must retain the application's SDR format order");
         const auto replacementSwapchain = reinterpret_cast<VkSwapchainKHR>(
             static_cast<uintptr_t>(2001));
         const auto replacementFeedback = swapchainInfo(replacement);

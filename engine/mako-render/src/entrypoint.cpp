@@ -24,9 +24,11 @@
 #include <exception>
 #include <iostream>
 #include <mutex>
+#include <new>
 #include <string_view>
 #include <string>
 #include <thread>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -928,7 +930,9 @@ namespace {
         if (!layer_info && !initializeLayerInfo()) return nullptr;
 
         if (std::string_view(name) ==
-                "vkGetPhysicalDeviceSurfaceCapabilities2KHR") {
+                "vkGetPhysicalDeviceSurfaceCapabilities2KHR" ||
+                std::string_view(name) ==
+                "vkGetPhysicalDeviceSurfaceFormats2KHR") {
             if (!instance || !layer_info->GetInstanceProcAddr ||
                     !layer_info->GetInstanceProcAddr(instance, name)) {
                 return nullptr;
@@ -1626,6 +1630,85 @@ namespace {
             clearFixedSurfaceScalingContract(physicalDevice, surface);
         }
         return result;
+    }
+
+    template <typename Format>
+    VkResult copyApplicationSurfaceFormats(
+            const std::vector<VkSurfaceFormatKHR>& formats,
+            uint32_t* count, Format* output) {
+        if (!count)
+            return VK_ERROR_INITIALIZATION_FAILED;
+        if (!output) {
+            *count = static_cast<uint32_t>(formats.size());
+            return VK_SUCCESS;
+        }
+        const uint32_t written = std::min(*count,
+            static_cast<uint32_t>(formats.size()));
+        for (uint32_t i = 0; i < written; ++i) {
+            if constexpr (std::is_same_v<Format, VkSurfaceFormatKHR>)
+                output[i] = formats[i];
+            else
+                output[i].surfaceFormat = formats[i];
+        }
+        *count = written;
+        return written < formats.size() ? VK_INCOMPLETE : VK_SUCCESS;
+    }
+
+    VkResult myvkGetPhysicalDeviceSurfaceFormatsKHR(
+            const VkPhysicalDevice physicalDevice, const VkSurfaceKHR surface,
+            uint32_t* count, VkSurfaceFormatKHR* formats) {
+        if (!instance_info ||
+                !instance_info->funcs.GetPhysicalDeviceSurfaceFormatsKHR)
+            return VK_ERROR_INITIALIZATION_FAILED;
+        try {
+            if (instance_info->scalingSurfaces) {
+                const auto applicationFormats =
+                    instance_info->scalingSurfaces->applicationFormats(
+                        physicalDevice, surface,
+                        instance_info->funcs.GetPhysicalDeviceSurfaceFormatsKHR);
+                if (applicationFormats)
+                    return copyApplicationSurfaceFormats(*applicationFormats,
+                        count, formats);
+            }
+        } catch (const std::bad_alloc&) {
+            return VK_ERROR_OUT_OF_HOST_MEMORY;
+        }
+        return instance_info->funcs.GetPhysicalDeviceSurfaceFormatsKHR(
+            physicalDevice, surface, count, formats);
+    }
+
+    VkResult myvkGetPhysicalDeviceSurfaceFormats2KHR(
+            const VkPhysicalDevice physicalDevice,
+            const VkPhysicalDeviceSurfaceInfo2KHR* surfaceInfo,
+            uint32_t* count, VkSurfaceFormat2KHR* formats) {
+        if (!layer_info || !instance_info || !surfaceInfo || !count)
+            return VK_ERROR_INITIALIZATION_FAILED;
+        const auto lower = reinterpret_cast<PFN_vkGetPhysicalDeviceSurfaceFormats2KHR>(
+            layer_info->GetInstanceProcAddr(instance_info->handles.front(),
+                "vkGetPhysicalDeviceSurfaceFormats2KHR"));
+        if (!lower)
+            return VK_ERROR_EXTENSION_NOT_PRESENT;
+        // Per-format output chains and input mode constraints belong to the
+        // driver. Only the ordinary format/color-space list is virtualized.
+        bool plainFormats = !surfaceInfo->pNext;
+        if (formats) {
+            for (uint32_t i = 0; i < *count; ++i)
+                plainFormats = plainFormats && !formats[i].pNext;
+        }
+        try {
+            if (plainFormats && instance_info->scalingSurfaces) {
+                const auto applicationFormats =
+                    instance_info->scalingSurfaces->applicationFormats(
+                        physicalDevice, surfaceInfo->surface,
+                        instance_info->funcs.GetPhysicalDeviceSurfaceFormatsKHR);
+                if (applicationFormats)
+                    return copyApplicationSurfaceFormats(*applicationFormats,
+                        count, formats);
+            }
+        } catch (const std::bad_alloc&) {
+            return VK_ERROR_OUT_OF_HOST_MEMORY;
+        }
+        return lower(physicalDevice, surfaceInfo, count, formats);
     }
 
     VkResult myvkGetPhysicalDeviceSurfaceCapabilities2KHR(
@@ -2827,6 +2910,10 @@ namespace {
                         VKPTR(myvkGetPhysicalDeviceSurfaceCapabilitiesKHR) },
                     { "vkGetPhysicalDeviceSurfaceCapabilities2KHR",
                         VKPTR(myvkGetPhysicalDeviceSurfaceCapabilities2KHR) },
+                    { "vkGetPhysicalDeviceSurfaceFormatsKHR",
+                        VKPTR(myvkGetPhysicalDeviceSurfaceFormatsKHR) },
+                    { "vkGetPhysicalDeviceSurfaceFormats2KHR",
+                        VKPTR(myvkGetPhysicalDeviceSurfaceFormats2KHR) },
                     { "vkCreateSwapchainKHR", VKPTR(myvkCreateSwapchainKHR) },
                     { "vkAcquireNextImageKHR", VKPTR(myvkAcquireNextImageKHR) },
                     { "vkQueuePresentKHR", VKPTR(myvkQueuePresentKHR) },
