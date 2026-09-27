@@ -184,6 +184,8 @@ cmake --build build
 
 The default build produces both split-chain Vulkan DSOs. A targeted `--target mako-render` build also refreshes `mako-render-scaling`, because the upper and lower roles share one versioned runtime contract and must never be staged from different source generations.
 
+The default and Vulkan-layer builds check `mako-render/src/**/*.cpp` against the explicit production source lists in `mako-render/CMakeLists.txt`. When adding or moving an implementation file, assign it to its owning target there. The inventory check runs on incremental builds too, so an unlisted new file fails the build instead of silently disappearing from the host, 32-bit, Flatpak, and Arch artifacts. CTest runs the same check as `renderer-source-inventory` in the portable policy set.
+
 4. **Install**
 
 ```bash

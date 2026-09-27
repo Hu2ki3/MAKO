@@ -141,7 +141,7 @@ Positive split-chain scaling evidence requires the ordered three-role loader cha
 | Extent, placement, format, queue, and memory policy | `mako-render/src/spatial_scaling_policy.hpp` |
 | Surface interception and split-role relays | `mako-render/src/entrypoint.cpp` |
 | Swapchain activation and resources | `mako-render/src/instance.cpp`, `mako-render/src/spatial_scaler.cpp` |
-| Scaling-only and combined presentation | `mako-render/src/swapchain/present.cpp` |
+| Scaling-only and combined presentation | `mako-render/src/swapchain/present.cpp`, `mako-render/src/swapchain/present/real_frames.cpp` |
 | MAKO shader source and generated payload | `mako-render/src/shaders/`, `scripts/generate-spatial-scaling-spirv.py` |
 | Shared LS1/LSFG resource resolution and validation; LS1 translation | `mako-backend/src/extraction/`, `mako-cli inspect-dll` |
 | Portable policy and transition coverage | `mako-render/tests/spatial_scaling_policy_tests.cpp`, `mako-render/tests/profile_update_tests.cpp` |

@@ -131,6 +131,7 @@ Artifacts are written under `engine/out/`. These commands build locally; they do
 
 ## More documentation
 
+- [Renderer code map](docs/RENDERER-ARCHITECTURE.md): component owners and presentation file boundaries.
 - [Configuration](docs/CONFIGURATION.md): profiles, settings, environment variables, and manual configuration.
 - [Runtime transitions](docs/RUNTIME-TRANSITIONS.md): live, deferred, and restart-required changes.
 - [Scaling](docs/SCALING.md): spatial scaling setup, behavior, and limitations.

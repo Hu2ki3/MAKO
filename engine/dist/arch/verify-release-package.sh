@@ -120,7 +120,7 @@ if ! command -v makepkg >/dev/null 2>&1 || ! command -v fakeroot >/dev/null 2>&1
         ' _ "$expected_archive" "$container_output_path" "$expected_package"
 fi
 
-for command in bsdtar find; do
+for command in bsdtar find od readelf; do
     if ! command -v "$command" >/dev/null 2>&1; then
         echo "Required command not found: $command" >&2
         exit 1
@@ -165,8 +165,10 @@ for required_entry in \
     usr/bin/mako-ui \
     usr/lib/libmako-render.so \
     usr/lib/libmako-render-scaling.so \
+    usr/lib/vkbasalt/libvkbasalt.so \
     usr/lib32/libmako-render.so \
     usr/lib32/libmako-render-scaling.so \
+    usr/lib32/vkbasalt/libvkbasalt.so \
     usr/share/applications/io.github.eugeniosegala.mako.desktop; do
     if ! grep -Fqx "$required_entry" <<< "$package_entries"; then
         echo "Built Arch package is missing $required_entry" >&2
@@ -199,6 +201,68 @@ if [[ "$packaged_renderer_version" != "$pkgver" ]]; then
     echo "Built Arch package contains Renderer $packaged_renderer_version instead of $pkgver." >&2
     exit 1
 fi
+
+# makepkg --nodeps cannot detect a new DT_NEEDED entry in the prebuilt archive.
+# Keep the known ELF dependencies aligned with the package's declared depends.
+mkdir -p "$work_dir/audit"
+bsdtar -xf "${package_files[0]}" -C "$work_dir/audit"
+while IFS= read -r -d '' audited_binary; do
+    if [[ "$(od -An -tx1 -N4 "$audited_binary" | tr -d '[:space:]')" != 7f454c46 ]]; then
+        continue
+    fi
+    binary_path="${audited_binary#"$work_dir/audit/"}"
+    case "$binary_path" in
+        usr/bin/* | usr/lib/* | usr/lib32/*) ;;
+        *)
+            echo "Built Arch package has an ELF in an unreviewed location: $binary_path." >&2
+            exit 1 ;;
+    esac
+    elf_header="$(readelf -h "$audited_binary")"
+    dynamic_section="$(readelf -d "$audited_binary")"
+
+    architecture_prefix=""
+    expected_class=ELF64
+    if [[ "$binary_path" == usr/lib32/* ]]; then
+        architecture_prefix=lib32-
+        expected_class=ELF32
+    fi
+    if ! grep -Eq "Class: *$expected_class$" <<< "$elf_header"; then
+        echo "Built Arch package has the wrong ELF class for $binary_path; expected $expected_class." >&2
+        exit 1
+    fi
+
+    while IFS= read -r soname; do
+        [[ -n "$soname" ]] || continue
+        case "$soname" in
+            libc.so.6 | libm.so.6 | ld-linux.so.2 | ld-linux-x86-64.so.2)
+                dependency="${architecture_prefix}glibc" ;;
+            libgcc_s.so.1 | libstdc++.so.6)
+                dependency="${architecture_prefix}gcc-libs" ;;
+            libX11.so.6)
+                dependency="${architecture_prefix}libx11" ;;
+            libGLX.so.0 | libOpenGL.so.0)
+                dependency=libglvnd ;;
+            libQt6Core.so.6 | libQt6Gui.so.6 | libQt6Network.so.6 | libQt6OpenGL.so.6)
+                dependency=qt6-base ;;
+            libQt6Qml.so.6 | libQt6QmlModels.so.6 | libQt6Quick.so.6)
+                dependency=qt6-declarative ;;
+            *)
+                echo "Built Arch package has an unreviewed ELF dependency: $binary_path needs $soname." >&2
+                exit 1 ;;
+        esac
+        if [[ -n "$architecture_prefix" ]]; then
+            case "$dependency" in
+                qt6-* | libglvnd)
+                    echo "Built Arch package has an unreviewed 32-bit dependency: $binary_path needs $soname." >&2
+                    exit 1 ;;
+            esac
+        fi
+        if ! grep -Fqx "depend = $dependency" <<< "$package_info"; then
+            echo "Built Arch package lacks dependency $dependency for $binary_path ($soname)." >&2
+            exit 1
+        fi
+    done < <(sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1/p' <<< "$dynamic_section")
+done < <(find "$work_dir/audit" -type f -print0)
 
 if [[ -n "$output_path" ]]; then
     output_tmp="${output_path}.tmp.$$"

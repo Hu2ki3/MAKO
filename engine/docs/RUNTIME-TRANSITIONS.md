@@ -173,7 +173,7 @@ Exported image-memory and timeline-semaphore descriptors are scoped until the ba
 | Polling, profile selection, and backend baselines | `mako-render/src/instance.*` |
 | Merge and transition classification | `mako-render/src/profile_update.hpp` |
 | Private transitions and live application | `mako-render/src/runtime_transition.hpp`, `mako-render/src/swapchain/resources.cpp`, `mako-render/src/swapchain/profile.cpp` |
-| Real-frame and generated presentation | `mako-render/src/swapchain/present.cpp` |
+| Real-frame and generated presentation | `mako-render/src/swapchain/present.cpp`, `mako-render/src/swapchain/present/` |
 | Process-start transport policy | `mako-render/src/presentation_policy.hpp`, `scripts/mako-launch` |
 | Status and diagnostics | `mako-render/src/runtime_status.*`, `mako-render/src/present_diagnostics.*` |
 | Deterministic tests | `mako-render/tests/profile_update_tests.cpp`, `runtime_transition_tests.cpp`, `runtime_status_tests.cpp` |

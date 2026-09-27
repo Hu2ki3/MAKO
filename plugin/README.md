@@ -57,3 +57,5 @@ See the [configuration guide](docs/CONFIGURATION.md) for settings and profiles, 
 ## Development
 
 To build MAKO Decky from source or create a local test ZIP, follow the [packaging guide](docs/PACKAGING.md). Contributors should also follow the [testing guide](../TESTING.md).
+
+The [frontend code map](docs/FRONTEND-ARCHITECTURE.md) identifies the owners of profile state, configuration writes, settings views, and the shader effect selector. The [backend code map](docs/BACKEND-ARCHITECTURE.md) identifies the RPC, profile, wrapper, installation, Flatpak, and runtime-status boundaries.

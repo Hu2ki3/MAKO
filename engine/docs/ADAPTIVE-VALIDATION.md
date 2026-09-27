@@ -166,7 +166,7 @@ An affected candidate is ready for broader testing when:
 | Adaptive policy and state | `mako-render/src/adaptive_scheduler.*` |
 | Generated-frame plan | `mako-render/src/generated_frame_plan.hpp` |
 | Delivery windows | `mako-render/src/generated_frame_delivery.hpp` |
-| Fixed budgets and presentation recovery | `mako-render/src/presentation_policy.hpp`, `mako-render/src/swapchain/present.cpp` |
+| Fixed budgets and presentation recovery | `mako-render/src/presentation_policy.hpp`, `mako-render/src/swapchain/present.cpp`, `mako-render/src/swapchain/present/admission.cpp` |
 | Private-resource transitions | `mako-render/src/profile_update.hpp`, `mako-render/src/runtime_transition.hpp`, `mako-render/src/swapchain/resources.cpp` |
 | Diagnostics | `mako-render/src/present_diagnostics.*` |
 | Portable policy tests and matrix | `mako-render/tests/`, `scripts/test-adaptive-scheduler.sh` |

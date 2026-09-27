@@ -1,0 +1,29 @@
+# The production targets list sources explicitly in CMakeLists.txt. Check the
+# filesystem at build time so an incremental build also catches new files that
+# were not assigned to a target.
+set(source_root "@CMAKE_CURRENT_SOURCE_DIR@")
+set(registered_sources "@RENDERER_PRODUCTION_SOURCES@")
+file(GLOB_RECURSE discovered_sources RELATIVE "${source_root}"
+    "${source_root}/src/*.cpp")
+
+set(unregistered_sources ${discovered_sources})
+foreach(source IN LISTS registered_sources)
+    list(REMOVE_ITEM unregistered_sources "${source}")
+endforeach()
+
+set(missing_sources ${registered_sources})
+foreach(source IN LISTS discovered_sources)
+    list(REMOVE_ITEM missing_sources "${source}")
+endforeach()
+
+list(LENGTH registered_sources registered_count)
+list(REMOVE_DUPLICATES registered_sources)
+list(LENGTH registered_sources unique_count)
+if(unregistered_sources OR missing_sources OR NOT registered_count EQUAL unique_count)
+    message(FATAL_ERROR
+        "MAKO Renderer source inventory differs from the production CMake targets. "
+        "Assign each src/*.cpp file to its owning target in mako-render/CMakeLists.txt.\n"
+        "Unregistered sources: ${unregistered_sources}\n"
+        "Registered but missing sources: ${missing_sources}\n"
+        "Registered source count: ${registered_count}; unique count: ${unique_count}")
+endif()

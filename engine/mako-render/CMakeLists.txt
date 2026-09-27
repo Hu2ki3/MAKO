@@ -7,12 +7,39 @@ set(LAYER_SOURCES
     "src/runtime_status.cpp"
     "src/swapchain/create.cpp"
     "src/swapchain/present.cpp"
+    "src/swapchain/present/admission.cpp"
+    "src/swapchain/present/generated_frames.cpp"
+    "src/swapchain/present/real_frames.cpp"
+    "src/swapchain/present/retirement.cpp"
     "src/swapchain/profile.cpp"
     "src/swapchain/resources.cpp"
     "src/swapchain/status.cpp")
 
+set(ADAPTIVE_SOURCE "src/adaptive_scheduler.cpp")
+set(SPATIAL_SCALER_SOURCE "src/spatial_scaler.cpp")
+set(COLOR_PIPELINE_SOURCE "src/color_pipeline.cpp")
+
+# Keep explicit target membership while detecting a newly added implementation
+# that was forgotten in CMake. The checker runs for the default and layer
+# targets, so adding a source under src/ fails even in an existing build tree.
+set(RENDERER_PRODUCTION_SOURCES
+    ${LAYER_SOURCES}
+    ${ADAPTIVE_SOURCE}
+    ${SPATIAL_SCALER_SOURCE}
+    ${COLOR_PIPELINE_SOURCE})
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/check-source-inventory.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/check-source-inventory.cmake"
+    @ONLY)
+add_custom_target(mako-renderer-source-inventory
+    COMMAND "${CMAKE_COMMAND}" -P
+        "${CMAKE_CURRENT_BINARY_DIR}/check-source-inventory.cmake"
+    COMMENT "Checking MAKO Renderer source inventory"
+    VERBATIM)
+
 add_library(mako-adaptive STATIC
-    "src/adaptive_scheduler.cpp")
+    ${ADAPTIVE_SOURCE})
+add_dependencies(mako-adaptive mako-renderer-source-inventory)
 target_include_directories(mako-adaptive
     PUBLIC "src"
     PUBLIC "../mako-common/include")
@@ -22,7 +49,8 @@ set_target_properties(mako-adaptive PROPERTIES
 
 if(MAKO_BUILD_VK_LAYER OR MAKO_BUILD_CLI)
     add_library(mako-spatial-scaler STATIC
-        "src/spatial_scaler.cpp")
+        ${SPATIAL_SCALER_SOURCE})
+    add_dependencies(mako-spatial-scaler mako-renderer-source-inventory)
     target_include_directories(mako-spatial-scaler
         PUBLIC "src")
     target_link_libraries(mako-spatial-scaler
@@ -87,7 +115,8 @@ if(MAKO_BUILD_VK_LAYER)
     endif()
 
     add_library(mako-color STATIC
-        "src/color_pipeline.cpp")
+        ${COLOR_PIPELINE_SOURCE})
+    add_dependencies(mako-color mako-renderer-source-inventory)
     target_include_directories(mako-color
         PUBLIC "src")
     target_link_libraries(mako-color
@@ -119,12 +148,14 @@ if(MAKO_BUILD_VK_LAYER)
     endfunction()
 
     add_library(mako-render SHARED ${LAYER_SOURCES})
+    add_dependencies(mako-render mako-renderer-source-inventory)
     mako_configure_renderer_layer(mako-render)
 
     # Frame generation and scaling occupy opposite sides of Gamescope WSI.
     # Build a second isolated copy so the loader can form the only chain that
     # preserves both contracts: FG -> Gamescope WSI -> spatial scaling.
     add_library(mako-render-scaling SHARED ${LAYER_SOURCES})
+    add_dependencies(mako-render-scaling mako-renderer-source-inventory)
     target_compile_definitions(mako-render-scaling PRIVATE
         MAKO_LAYER_ROLE_SPATIAL_SCALING=1)
     mako_configure_renderer_layer(mako-render-scaling)
@@ -136,6 +167,12 @@ if(MAKO_BUILD_VK_LAYER)
 endif()
 
 if(BUILD_TESTING)
+    add_test(NAME renderer-source-inventory
+        COMMAND "${CMAKE_COMMAND}" -P
+            "${CMAKE_CURRENT_BINARY_DIR}/check-source-inventory.cmake")
+    set_tests_properties(renderer-source-inventory PROPERTIES
+        LABELS "portable-policy")
+
     # Keep portable build and CTest membership together so the shell runner
     # cannot drift when another policy test is added.
     add_custom_target(mako-portable-policy-test-binaries)

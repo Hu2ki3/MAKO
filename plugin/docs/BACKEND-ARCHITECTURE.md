@@ -1,0 +1,19 @@
+# MAKO Decky backend code map
+
+MAKO Decky's Python backend translates UI requests into canonical profile data, generated launch wrappers, installed files, and runtime status. The modules have distinct ownership even where a service orchestrator remains large.
+
+| Concern | Owner | Boundary |
+| --- | --- | --- |
+| Async RPC and Decky lifecycle | `py_modules/mako_plugin/plugin.py` | Validates request shape, calls services, and returns typed responses; it does not own profile serialization or file replacement. |
+| Public response mappings | `py_modules/mako_plugin/types.py` and owning service types | Keep Python RPC payloads aligned with `src/api/makoApi.ts` and the RPC contract tests. |
+| Renderer TOML and profile transactions | `py_modules/mako_plugin/configuration.py` | Orchestrates profile and wrapper-sidecar changes, locks configuration field writes, and regenerates dependent files. |
+| Profile metadata and wrapper sidecars | `py_modules/mako_plugin/profile_storage.py` | Normalizes persisted Decky-only values and owns profile identity and vkBasalt content merging. |
+| Pure launcher generation | `py_modules/mako_plugin/wrapper_generation.py` | Emits the current wrapper format from normalized inputs; no runtime import from MAKO Renderer. |
+| Atomic replacement and rollback | `py_modules/mako_plugin/managed_files.py` and `installation.py` | The helper owns file primitives; installation owns the native payload transaction and selected Renderer identity. |
+| Flatpak setup | `py_modules/mako_plugin/flatpak_service.py` | Detects runtime extensions and manages application overrides outside the native installation transaction. |
+| Runtime status | `py_modules/mako_plugin/runtime_state.py` | Validates and reads MAKO Renderer's atomic status records; it does not apply profile changes. |
+| Paths and stable identifiers | `py_modules/mako_plugin/base_service.py`, `constants.py`, and `package_paths.py` | Resolve the Decky user's paths, packaged payloads, and compatibility names. |
+
+`shared_config.py` owns the cross-language configuration schema. Generate its Python and TypeScript bindings through the owning script; never edit generated bindings directly. A profile write must keep Renderer TOML, Decky sidecars, the selected shader configuration, and the generated wrapper coherent. Installation and Flatpak preparation are separate transactions with the limits recorded in [native installation transactions](../../INSTALLATION-TRANSACTIONS.md).
+
+Keep orchestration in `ConfigurationService` and `InstallationService` when an operation must coordinate several files. A shorter file is not a reason to create a second state owner or to move only half of a transaction. Follow [testing](../../TESTING.md) and the focused backend contract tests whenever an RPC, profile, wrapper, installation, or Flatpak boundary changes.

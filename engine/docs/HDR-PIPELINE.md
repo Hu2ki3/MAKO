@@ -117,7 +117,7 @@ Keep these invariants:
 | Feedback stabilization | `mako-render/src/runtime_transition.hpp` |
 | Format and colour-space classification | `mako-render/src/color_pipeline.cpp` |
 | Swapchain resources and private transitions | `mako-render/src/swapchain/resources.cpp` |
-| Native-first experimental presentation | `mako-render/src/swapchain/present.cpp` |
+| Native-first experimental presentation | `mako-render/src/swapchain/present.cpp`, `mako-render/src/swapchain/present/real_frames.cpp` |
 | Backend encodings and conversion shaders | `mako-backend/src/mako.cpp`, `mako-backend/src/shaders/` |
 | Embedded shader generation and freshness | `scripts/generate-color-conversion-spirv.py`, portable CTest |
 | Deterministic policy coverage | `mako-render/tests/color_pipeline_tests.cpp`, `mako-render/tests/presentation_policy_tests.cpp`, related Renderer tests |

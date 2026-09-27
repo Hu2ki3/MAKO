@@ -474,6 +474,8 @@ namespace mako::layer {
         [[nodiscard]] bool resetGenerationScheduler(
             std::chrono::steady_clock::time_point now,
             std::string_view reason);
+
+        // Real-frame presentation and source history.
         void recordPresentCadence(
             std::chrono::steady_clock::time_point presentNow);
         [[nodiscard]] VkResult presentNativeFrame(
@@ -487,9 +489,13 @@ namespace mako::layer {
             const PresentInvocation& invocation, VkSemaphore waitSemaphore,
             const void* nextChain,
             std::chrono::steady_clock::duration* duration = nullptr);
-        [[nodiscard]] VkResult queuePresentWithRetirementFence(
-            const vk::Vulkan& vk, VkQueue queue,
-            const VkPresentInfoKHR& presentInfo);
+        void submitSourceCopy(const PresentInvocation& invocation,
+            VkImage swapchainImage, const vk::Image& sourceImage);
+        [[nodiscard]] VkResult presentHistoryOnly(
+            const PresentInvocation& invocation,
+            const PresentationFramePlan& plan);
+
+        // Frame planning, resource readiness, and generated-image admission.
         [[nodiscard]] bool recoverBackendIfReady(const vk::Vulkan& vk);
         void ensureHistoryWarmup(bool restart = false);
         [[nodiscard]] PresentationFramePlan prepareFramePlan(
@@ -521,15 +527,15 @@ namespace mako::layer {
             const char* action);
         void reportGeneratedImageAdmissionAvailable(
             size_t requiredStableBatches = 1);
-        void submitSourceCopy(const PresentInvocation& invocation,
-            VkImage swapchainImage, const vk::Image& sourceImage);
-        [[nodiscard]] VkResult presentHistoryOnly(
-            const PresentInvocation& invocation,
-            const PresentationFramePlan& plan);
+
+        // Generated delivery and lower-swapchain retirement.
         [[nodiscard]] VkResult presentGeneratedFrames(
             const PresentInvocation& invocation,
             const PresentationFramePlan& plan,
             bool gamescopeHdrTransport);
+        [[nodiscard]] VkResult queuePresentWithRetirementFence(
+            const vk::Vulkan& vk, VkQueue queue,
+            const VkPresentInfoKHR& presentInfo);
         VkResult retireAcquiredImagesAndPresent(const vk::Vulkan& vk,
             VkQueue queue, VkSwapchainKHR swapchain, const void* nextChain,
             uint32_t originalImageIndex,

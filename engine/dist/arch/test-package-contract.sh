@@ -52,7 +52,9 @@ trap 'rm -rf -- "$package_root"' EXIT
 mkdir -p \
     "$package_root/usr/bin" \
     "$package_root/usr/lib" \
+    "$package_root/usr/lib/vkbasalt" \
     "$package_root/usr/lib32" \
+    "$package_root/usr/lib32/vkbasalt" \
     "$package_root/usr/share/applications" \
     "$package_root/usr/share/doc/mako-renderer-bin"
 touch \
@@ -62,15 +64,37 @@ touch \
     "$package_root/usr/bin/mako-ui" \
     "$package_root/usr/lib/libmako-render.so" \
     "$package_root/usr/lib/libmako-render-scaling.so" \
+    "$package_root/usr/lib/vkbasalt/libvkbasalt.so" \
     "$package_root/usr/lib32/libmako-render.so" \
     "$package_root/usr/lib32/libmako-render-scaling.so" \
+    "$package_root/usr/lib32/vkbasalt/libvkbasalt.so" \
     "$package_root/usr/share/applications/io.github.eugeniosegala.mako.desktop"
+for binary_path in \
+    usr/bin/mako-cli \
+    usr/bin/mako-ui \
+    usr/lib/libmako-render.so \
+    usr/lib/libmako-render-scaling.so \
+    usr/lib/vkbasalt/libvkbasalt.so \
+    usr/lib32/libmako-render.so \
+    usr/lib32/libmako-render-scaling.so \
+    usr/lib32/vkbasalt/libvkbasalt.so; do
+    printf '\177ELF' > "$package_root/$binary_path"
+done
+if [[ "${MAKO_TEST_ADD_NEW_ELF:-0}" == 1 ]]; then
+    printf '\177ELF' > "$package_root/usr/lib/libfuture.so"
+fi
 printf '%s\n' install-script > "$package_root/.INSTALL"
 printf '%s\n' \
     'pkgname = mako-renderer-bin' \
     "pkgver = ${MAKO_TEST_PACKAGE_VERSION_OVERRIDE:-${MAKO_TEST_PKGVER}-${MAKO_TEST_PKGREL}}" \
     'arch = x86_64' \
+    'depend = glibc' \
+    'depend = gcc-libs' \
+    'depend = lib32-gcc-libs' \
     > "$package_root/.PKGINFO"
+if [[ "${MAKO_TEST_OMIT_LIB32_GLIBC:-0}" != 1 ]]; then
+    printf '%s\n' 'depend = lib32-glibc' >> "$package_root/.PKGINFO"
+fi
 printf '%s\n' "${MAKO_TEST_RENDERER_VERSION_OVERRIDE:-$MAKO_TEST_PKGVER}" \
     > "$package_root/usr/share/doc/mako-renderer-bin/MAKO-Renderer-version.txt"
 tar -cf "mako-renderer-bin-${MAKO_TEST_PKGVER}-${MAKO_TEST_PKGREL}-x86_64.pkg.tar.zst" \
@@ -80,11 +104,35 @@ cat > "$fake_tools/bsdtar" <<'EOF'
 #!/bin/sh
 exec tar "$@"
 EOF
+cat > "$fake_tools/readelf" <<'EOF'
+#!/bin/sh
+set -eu
+case "$1" in
+    -h)
+        case "$2" in
+            */lib32/*) printf '  Class:                             ELF32\n' ;;
+            *) printf '  Class:                             ELF64\n' ;;
+        esac ;;
+    -d)
+        printf ' 0x00000001 (NEEDED)             Shared library: [libc.so.6]\n'
+        case "$2" in
+            */lib32/*) printf ' 0x00000001 (NEEDED)             Shared library: [libgcc_s.so.1]\n' ;;
+            *) printf ' 0x00000001 (NEEDED)             Shared library: [libstdc++.so.6]\n' ;;
+        esac
+        if [ -n "${MAKO_TEST_EXTRA_NEEDED:-}" ]; then
+            printf ' 0x00000001 (NEEDED)             Shared library: [%s]\n' "$MAKO_TEST_EXTRA_NEEDED"
+        fi
+        case "$2" in
+            */libfuture.so) printf ' 0x00000001 (NEEDED)             Shared library: [libunexpected.so.1]\n' ;;
+        esac ;;
+    *) exit 2 ;;
+esac
+EOF
 cat > "$fake_tools/fakeroot" <<'EOF'
 #!/bin/sh
 exit 0
 EOF
-chmod +x "$fake_tools/makepkg" "$fake_tools/bsdtar" "$fake_tools/fakeroot"
+chmod +x "$fake_tools/makepkg" "$fake_tools/bsdtar" "$fake_tools/readelf" "$fake_tools/fakeroot"
 current_pkgver="$(sed -n 's/^pkgver=\(.*\)$/\1/p' "$script_dir/PKGBUILD")"
 current_pkgrel="$(sed -n 's/^pkgrel=\(.*\)$/\1/p' "$script_dir/PKGBUILD")"
 fake_archive="$work_dir/MAKO-Renderer-v${current_pkgver}-linux.tar.xz"
@@ -97,6 +145,33 @@ MAKO_TEST_PKGVER="$current_pkgver" \
         "$fake_archive" "$retained_package" >/dev/null
 [[ -f "$retained_package" ]]
 tar -tf "$retained_package" | grep -Fqx usr/bin/mako-launch
+if MAKO_TEST_PKGVER="$current_pkgver" \
+        MAKO_TEST_PKGREL="$current_pkgrel" \
+        MAKO_TEST_EXTRA_NEEDED=libunexpected.so.1 \
+        PATH="$fake_tools:/usr/bin:/bin" \
+        "$script_dir/verify-release-package.sh" "$fake_archive" \
+        >/dev/null 2>&1; then
+    echo "Arch release package accepted an unreviewed ELF dependency" >&2
+    exit 1
+fi
+if MAKO_TEST_PKGVER="$current_pkgver" \
+        MAKO_TEST_PKGREL="$current_pkgrel" \
+        MAKO_TEST_ADD_NEW_ELF=1 \
+        PATH="$fake_tools:/usr/bin:/bin" \
+        "$script_dir/verify-release-package.sh" "$fake_archive" \
+        >/dev/null 2>&1; then
+    echo "Arch release package skipped an added ELF file" >&2
+    exit 1
+fi
+if MAKO_TEST_PKGVER="$current_pkgver" \
+        MAKO_TEST_PKGREL="$current_pkgrel" \
+        MAKO_TEST_OMIT_LIB32_GLIBC=1 \
+        PATH="$fake_tools:/usr/bin:/bin" \
+        "$script_dir/verify-release-package.sh" "$fake_archive" \
+        >/dev/null 2>&1; then
+    echo "Arch release package accepted a missing declared dependency" >&2
+    exit 1
+fi
 if MAKO_TEST_PKGVER="$current_pkgver" \
         MAKO_TEST_PKGREL="$current_pkgrel" \
         PATH="$fake_tools:/usr/bin:/bin" \

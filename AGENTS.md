@@ -64,6 +64,9 @@ Start with the root `README.md`, then read `engine/README.md` or `plugin/README.
 
 | Boundary | Authoritative guide |
 | --- | --- |
+| Renderer code ownership and presentation modules | `engine/docs/RENDERER-ARCHITECTURE.md` |
+| Decky backend service ownership | `plugin/docs/BACKEND-ARCHITECTURE.md` |
+| Decky frontend state and settings composition | `plugin/docs/FRONTEND-ARCHITECTURE.md` |
 | Native installation, atomic file replacement, and rollback | `INSTALLATION-TRANSACTIONS.md` |
 | Renderer configuration | `engine/docs/CONFIGURATION.md` |
 | Launcher executable exclusions shared by Renderer and Decky | `engine/docs/CONFIGURATION.md`, `engine/mako-common/launcher_exclusions.json` |

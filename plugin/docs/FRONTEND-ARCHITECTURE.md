@@ -1,0 +1,18 @@
+# MAKO Decky frontend code map
+
+MAKO Decky's panel composes independently owned state and view modules. Keep profile persistence in the existing hooks and backend RPC boundary; settings components render those values and send changes through the supplied callbacks.
+
+| Concern | Owner | Boundary |
+| --- | --- | --- |
+| Panel composition and modal entry points | `src/components/Content.tsx` | Wires installation, session, configuration, and status hooks to views. |
+| Current game and selected editing profile | `src/hooks/useProfileSession.ts` | Selects the editor profile without changing the running game's profile. |
+| Profile lists and matching | `src/hooks/useProfileManagement.ts` | Calls backend profile RPCs and synchronizes the selected profile. |
+| Configuration loading and live status | `src/hooks/useMakoHooks.ts` | Reads backend state and supplies the current configuration. |
+| Debounced configuration writes | `src/hooks/useProfileConfigWriter.ts` | Serializes and applies editor changes; controls should not create a second save queue. |
+| Main feature grouping | `src/components/FeatureSettings.tsx` and `src/components/ModalityTabs.tsx` | Selects Frame Generation, Scaling, or Shaders while retaining shared controls. |
+| Feature controls | `src/components/FpsMultiplierControl.tsx`, `ScalingControl.tsx`, and `src/components/settings/` | Sends typed configuration changes through the editor callbacks. |
+| Shader effect selection | `src/components/settings/shaders/EffectsChecklist.tsx` | Owns effect order, paging, Steam focus, and serialized live saves; `ShadersConfigurationGroup.tsx` owns the surrounding settings and profile-keyed reset. |
+| Flatpak setup | `src/components/FlatpaksModal.tsx` | Owns extension and application operations and their status display. |
+| Shared presentation | `src/components/MakoUi.tsx`, `ContentNotices.tsx`, and `RuntimeStatusCard.tsx` | Renders controls, notices, and status without persisting profile state. |
+
+The schema source is `shared_config.py`; `src/config/generatedConfigSchema.ts` is generated. Decky's translation source is `defaults/i18n/`; `src/i18n/languages.json` is generated. Follow [testing](../../TESTING.md) after moving a component boundary, and preserve keyboard, gamepad, focus, selected-order, and profile-switch behavior in the focused frontend tests.

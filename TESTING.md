@@ -38,6 +38,8 @@ The `Tests` workflow runs on every pull request and push to `main`:
 
 The owning component tests remain authoritative for their detailed invariants.
 
+Default and Vulkan-layer Renderer builds and portable policy CTest check that every production `mako-render/src/**/*.cpp` file is registered with its CMake target. This catches a newly split file even when an existing build tree does not reconfigure. The complete local release-shaped package build then verifies the host archive, Flatpak bundles, Arch package, direct ELF dependencies, and checksums; a successful direct 64-bit build alone does not establish those package contracts.
+
 Launcher exclusion freshness runs in Renderer CTest and Decky's generated-contract gate; `just check-launcher-exclusions` runs it directly. The shared registry is `engine/mako-common/launcher_exclusions.json`; regenerate both component bindings with `just generate-launcher-exclusions`. Portable tests validate registry entries, reject stale or missing bindings without rewriting them, and cover exclusion and child activation for the registered executables. New exclusions also need focused real-launcher evidence; moving the unchanged list does not establish new compatibility evidence.
 
 Decky's backend suite includes `plugin/tests/test_flatpak_override_integration.py`, which uses the real Linux `flatpak override` command in a temporary `FLATPAK_USER_DIR`. It checks preparation, repeated app-list refreshes, removal, and preservation of unrelated settings for Heroic, Lutris, and Dolphin. Application/runtime inventory is simulated; no installed apps, runtime downloads, licensed inputs, or GPU are required. The test skips when Linux or Flatpak is unavailable locally; the Decky CI job installs Flatpak before running it. Actual sandbox launches and rendering remain MAKO Gym evidence.
@@ -49,9 +51,11 @@ just check-markdown-format
 just test
 pnpm --dir plugin run test:frontend:typecheck
 pnpm --dir plugin run test:frontend:coverage
-pnpm --dir plugin run build
+MAKO_LOCAL_RELEASE_BUILD=1 pnpm --dir plugin run build
 just test-engine-sanitized
 ```
+
+The local frontend build uses the prepared release-note version while `plugin/package.json` still carries the published version. The local package script and CI set the same flag; publication later aligns the versioned manifests and validates the exact release heading.
 
 The focused Renderer policy script compiles Vulkan-facing policies and the optional Gamescope surface adapter against a local client fixture, so it needs Vulkan, X11, and XCB headers even though it does not need a Vulkan device, compositor, or Wayland development package. The full Renderer suite additionally needs the Vulkan loader:
 
