@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sys
 import tarfile
 import tempfile
@@ -21,6 +22,7 @@ class _Logger:
 sys.modules.setdefault("decky", SimpleNamespace(logger=_Logger()))
 
 from py_modules.mako_plugin.constants import (  # noqa: E402
+    ACTIVE_RENDERER_OWNER_DECKY,
     ACTIVE_RENDERER_OWNER_STANDALONE,
     ACTIVE_RENDERER_STATE_SCHEMA_VERSION,
     MAKO_LAYER_DISABLE_ENV,
@@ -54,6 +56,7 @@ from py_modules.mako_plugin.constants import (  # noqa: E402
     JSON32_FILENAME,
     JSON_FILENAME,
     LIB_FILENAME,
+    VRR_LEASE_FILENAME,
 )
 from py_modules.mako_plugin.config_schema import (  # noqa: E402
     ConfigurationManager,
@@ -151,6 +154,9 @@ class DualArchInstallationTests(unittest.TestCase):
             self.root / "active-renderer.json"
         )
         self.service.standalone_install_prefix = self.root / "standalone"
+        self.service.standalone_vrr_lease_file = (
+            self.service.standalone_install_prefix / "bin" / VRR_LEASE_FILENAME
+        )
         self.service.standalone_lib_file = (
             self.service.standalone_install_prefix / "lib" / LIB_FILENAME
         )
@@ -186,6 +192,32 @@ class DualArchInstallationTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp_dir.cleanup()
+
+    def test_native_cleanup_lists_match_across_installers(self):
+        service = InstallationService(logger=_Logger())
+        inventory = service._renderer_file_inventory()
+        raw_paths = [
+            *inventory.required_archive.values(),
+            *inventory.optional_32bit_archive.values(),
+            *inventory.optional_archive.values(),
+            *inventory.generated,
+        ]
+        self.assertEqual(len(raw_paths), len(set(raw_paths)))
+        managed = [
+            str(path.relative_to(service.user_home))
+            for path in inventory.managed_paths()
+        ]
+        script = (
+            Path(__file__).resolve().parents[2]
+            / "engine/scripts/mako-installer"
+        ).read_text(encoding="utf-8")
+        match = re.search(
+            r"decky_renderer_relative_paths=\(\n(.*?)\n\)", script, re.S,
+        )
+        self.assertIsNotNone(match)
+        standalone = re.findall(r'^\s*"([^"]+)"', match.group(1), re.M)
+        self.assertEqual(len(standalone), len(set(standalone)))
+        self.assertEqual(set(managed), set(standalone))
 
     @staticmethod
     def _manifest(arch: str, *, spatial_scaling: bool = False) -> bytes:
@@ -295,6 +327,7 @@ class DualArchInstallationTests(unittest.TestCase):
             self.service.registered_json_file,
             self.service.vkbasalt_lib_file,
             self.service.vkbasalt_manifest,
+            self.service.vrr_lease_file,
             *(self.service.renderer_vkbasalt_shader_dir / filename
               for filename in VKBASALT_SHADER_ASSET_FILENAMES),
             self.service.mako_launch_script_path,
@@ -313,6 +346,7 @@ class DualArchInstallationTests(unittest.TestCase):
     def _touch_minimal_standalone_64bit_installation(self) -> None:
         for path in (
             self.service.standalone_lib_file,
+            self.service.standalone_vrr_lease_file,
             self.service.json_file,
             self.service.standalone_spatial_scaling_lib_file,
             self.service.spatial_scaling_json_file,
@@ -333,6 +367,26 @@ class DualArchInstallationTests(unittest.TestCase):
             }),
             encoding="utf-8",
         )
+
+    def test_decky_payload_check_uses_required_archive_inventory(self):
+        self._touch_minimal_64bit_installation()
+        self.assertTrue(self.service._native_payload_exists(
+            ACTIVE_RENDERER_OWNER_DECKY, False,
+        ))
+        self.service.vrr_lease_file.unlink()
+        self.assertFalse(self.service._native_payload_exists(
+            ACTIVE_RENDERER_OWNER_DECKY, False,
+        ))
+
+    def test_standalone_payload_check_requires_vrr_helper(self):
+        self._touch_minimal_standalone_64bit_installation()
+        self.assertTrue(self.service._native_payload_exists(
+            ACTIVE_RENDERER_OWNER_STANDALONE, False,
+        ))
+        self.service.standalone_vrr_lease_file.unlink()
+        self.assertFalse(self.service._native_payload_exists(
+            ACTIVE_RENDERER_OWNER_STANDALONE, False,
+        ))
 
     def test_installs_and_rewrites_both_layer_architectures(self):
         self.service._extract_and_install_files(self._archive())
@@ -1075,6 +1129,7 @@ class DualArchInstallationTests(unittest.TestCase):
         )
         for path in (
             standalone_library,
+            self.service.standalone_vrr_lease_file,
             self.service.standalone_spatial_scaling_lib_file,
             self.service.standalone_vkbasalt_lib_file,
         ):
@@ -1112,6 +1167,8 @@ class DualArchInstallationTests(unittest.TestCase):
         decky_file = self.service.lib_file
         decky_file.parent.mkdir(parents=True, exist_ok=True)
         decky_file.write_bytes(b"decky-renderer")
+        self.service.vrr_lease_file.parent.mkdir(parents=True, exist_ok=True)
+        self.service.vrr_lease_file.write_bytes(b"decky-vrr-lease")
         self.service.active_renderer_state_file.write_text(
             json.dumps({
                 "schema_version": ACTIVE_RENDERER_STATE_SCHEMA_VERSION,
@@ -1142,16 +1199,20 @@ class DualArchInstallationTests(unittest.TestCase):
         )
         self.service.config_file_path.parent.mkdir(parents=True, exist_ok=True)
         self.service.config_file_path.write_text("version = 2\n", encoding="utf-8")
+        diagnostics_log = self.service.config_dir / "present-diagnostics.log"
+        diagnostics_log.write_text("keep session\n", encoding="utf-8")
 
         result = self.service.uninstall()
 
         self.assertTrue(result["success"], result.get("error"))
         self.assertFalse(decky_file.exists())
+        self.assertFalse(self.service.vrr_lease_file.exists())
         self.assertFalse(self.service.active_renderer_state_file.exists())
         self.assertFalse(standalone_file.exists())
         self.assertTrue(modified_file.exists())
         self.assertFalse(self.service.standalone_installer_state_file.exists())
         self.assertTrue(self.service.config_file_path.exists())
+        self.assertEqual(diagnostics_log.read_text(encoding="utf-8"), "keep session\n")
 
     def test_installed_files_use_deterministic_permissions(self):
         self.service._extract_and_install_files(self._archive())
@@ -1385,6 +1446,7 @@ class DualArchInstallationTests(unittest.TestCase):
         # Preserve the exact selected manifests and old binary, including its mode.
         self.service.lib_file.write_bytes(b"previous-renderer")
         self.service.lib_file.chmod(0o444)
+        self.service.vrr_lease_file.write_bytes(b"previous-vrr-lease")
         existing = [path for path in self.root.rglob("*") if path.is_file() and path != archive]
         before = {path: (path.read_bytes(), path.stat().st_mode & 0o777) for path in existing}
         metadata = {"name": archive.name, "version": "test", "sha256hash": "0" * 64}

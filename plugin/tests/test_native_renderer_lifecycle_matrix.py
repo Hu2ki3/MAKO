@@ -100,6 +100,7 @@ class NativeRendererLifecycleMatrixTests(unittest.TestCase):
             prefix / "bin/mako-installer",
             prefix / "bin/mako-launch",
             prefix / "bin/mako-diagnostics",
+            service.standalone_vrr_lease_file,
             prefix / "share/applications/io.github.eugeniosegala.mako.desktop",
             service.json_file,
             service.spatial_scaling_json_file,

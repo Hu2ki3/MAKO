@@ -111,6 +111,7 @@ printf '%s\n' 'user modification' > "$install_prefix/share/applications/io.githu
 rm -f -- "$install_prefix/bin/mako-ui"
 mkdir -p "$config_home/mako-render"
 printf '%s\n' 'version = 1' > "$config_home/mako-render/conf.toml"
+printf '%s\n' 'retain diagnostic session' > "$config_home/mako-render/present-diagnostics.log"
 decky_plugin_dir="$test_root/homebrew/plugins/Mako"
 mkdir -p "$decky_plugin_dir"
 printf '%s\n' '{}' > "$decky_plugin_dir/plugin.json"
@@ -127,6 +128,8 @@ MAKO_INSTALLER_ASSUME_YES=1 \
 [[ -f "$install_prefix/share/applications/io.github.eugeniosegala.mako.desktop" ]] ||
     fail "uninstaller removed a modified file"
 [[ -f "$config_home/mako-render/conf.toml" ]] || fail "uninstaller removed configuration by default"
+[[ -f "$config_home/mako-render/present-diagnostics.log" ]] ||
+    fail "uninstaller removed diagnostics by default"
 
 printf 'n\n' | HOME="$test_root" \
         DISPLAY= \
@@ -141,6 +144,10 @@ grep -Fq 'Warning: MAKO Decky is installed' "$test_root/decky-install.log" ||
 [[ ! -e "$install_prefix/bin/mako-ui" ]] ||
     fail "installer changed the standalone payload after the MAKO Decky warning was declined"
 
+mkdir -p "$test_root/.local/share/mako-render/lib" "$test_root/.local/bin"
+printf '%s\n' 'decky renderer' > \
+    "$test_root/.local/share/mako-render/lib/libmako-render.so"
+printf '%s\n' '#!/usr/bin/env bash' > "$test_root/.local/bin/mako-run"
 HOME="$test_root" \
 MAKO_INSTALL_PREFIX="$install_prefix" \
 XDG_CONFIG_HOME="$config_home" \
@@ -152,17 +159,17 @@ MAKO_INSTALLER_NO_LAUNCH=1 \
 grep -Fq '"version": "test-version"' \
     "$install_prefix/share/mako-render/active-renderer.json" ||
     fail "installer did not record the active standalone Renderer version"
+grep -Fxq 'decky renderer' \
+    "$test_root/.local/share/mako-render/lib/libmako-render.so" ||
+    fail "standalone installation changed Decky's private Renderer payload"
+[[ -f "$test_root/.local/bin/mako-run" ]] ||
+    fail "standalone installation removed Decky's launch wrapper"
 
 HOME="$test_root" \
 XDG_CONFIG_HOME="$config_home" \
 MAKO_INSTALLER_ASSUME_YES=1 \
 MAKO_INSTALLER_NO_LAUNCH=1 \
 "$package_root/Install MAKO Renderer" --install >/dev/null
-mkdir -p "$test_root/.local/share/mako-render/lib"
-printf '%s\n' 'decky renderer' > \
-    "$test_root/.local/share/mako-render/lib/libmako-render.so"
-printf '%s\n' '#!/usr/bin/env bash' > "$test_root/.local/bin/mako-run"
-
 printf 'n\n' | HOME="$test_root" \
         DISPLAY= \
         WAYLAND_DISPLAY= \
@@ -194,6 +201,8 @@ MAKO_INSTALLER_ASSUME_YES=1 \
     fail "default uninstaller left the active Renderer identity"
 [[ ! -e "$test_root/.local/share/mako-render" ]] ||
     fail "default uninstaller left the managed Renderer data directory"
+[[ -f "$config_home/mako-render/present-diagnostics.log" ]] ||
+    fail "shared Renderer uninstall removed diagnostics without confirmation"
 
 # An invalid late payload must not partially update an existing installation.
 rollback_prefix="$test_root/rollback"
@@ -281,5 +290,20 @@ ui_result="$(MAKO_INSTALLER_NO_LAUNCH=0 "$package_root/Install MAKO Renderer" --
     cd "$rollback_prefix"
     sha256sum --check --status share/mako-render/installer/installed-files.sha256
 ) || fail "successful retry left an incorrect ownership record"
+
+purge_prefix="$test_root/purge-install"
+purge_config_home="$test_root/purge-config"
+MAKO_INSTALL_PREFIX="$purge_prefix" \
+XDG_CONFIG_HOME="$purge_config_home" \
+"$package_root/Install MAKO Renderer" --install >/dev/null
+mkdir -p "$purge_config_home/mako-render"
+printf '%s\n' 'version = 1' > "$purge_config_home/mako-render/conf.toml"
+printf '%s\n' 'private diagnostics' > \
+    "$purge_config_home/mako-render/present-diagnostics.log"
+MAKO_INSTALL_PREFIX="$purge_prefix" \
+XDG_CONFIG_HOME="$purge_config_home" \
+"$purge_prefix/bin/mako-installer" --uninstall --purge-configuration >/dev/null
+[[ ! -e "$purge_config_home/mako-render" ]] ||
+    fail "explicit configuration purge left profiles or diagnostics behind"
 
 printf '%s\n' 'mako-installer contract test passed'

@@ -22,6 +22,11 @@ class _Logger:
 sys.modules.setdefault("decky", SimpleNamespace(logger=_Logger()))
 
 from py_modules.mako_plugin.installation import InstallationService  # noqa: E402
+from py_modules.mako_plugin.constants import (  # noqa: E402
+    CONFIG_DIR,
+    PRESENT_DIAGNOSTICS_LOG_FILENAME,
+    PRESENT_DIAGNOSTICS_RETAINED_SESSION_COUNT,
+)
 
 FIXTURE = """\
 [Vulkan Loader] Loading VK_LAYER_MAKO_frame_generation
@@ -93,6 +98,18 @@ unrelated application output
 
 
 class DiagnosticsHelperTests(unittest.TestCase):
+    def test_helper_uses_the_wrapper_log_contract(self):
+        helper_source = HELPER.read_text(encoding="utf-8")
+        self.assertIn(
+            f'default_plugin_log="${{HOME}}/{CONFIG_DIR}/'
+            f'{PRESENT_DIAGNOSTICS_LOG_FILENAME}"',
+            helper_source,
+        )
+        self.assertIn(
+            f"retained_session_count={PRESENT_DIAGNOSTICS_RETAINED_SESSION_COUNT}",
+            helper_source,
+        )
+
     def _run(self, *arguments, environment=None):
         return subprocess.run(
             ["bash", str(HELPER), *arguments],

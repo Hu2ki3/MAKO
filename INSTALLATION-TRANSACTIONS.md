@@ -59,7 +59,7 @@ Standalone `MAKO_INSTALL_PREFIX` relocates its payload and state together. Decky
 7. `_create_mako_launch_script()` rebuilds `mako-run` from the resulting configuration and existing sidecar reads. `_install_diagnostics_helper()` installs the packaged helper. Wrapper/profile sidecars are not installation outputs and are not in this rollback set.
 8. `_write_engine_state()` writes the Decky payload record; `_write_active_renderer_state()` writes the selected Decky identity last. Normal context exit discards backups and `install()` reports success. Exceptions cause restoration before the service returns its failure response; non-`Exception` failures are re-raised after context cleanup.
 
-`_decky_renderer_files()` is the exact file-set owner: it includes both layer chains, private and registered manifests, managed Gamescope/MangoHud/vkBasalt files, the packaged vkBasalt shader catalog, the optional CLI, both identity records, `mako-run`, and `mako-diagnostics`. Add any new file written or removed by the installation body to that set before relying on rollback. Standalone binaries and its ownership manifest are outside this set; shared entries overwritten by Decky are inside it. Keeping the packaged catalog under `~/.local/share/mako-render/vkbasalt-shaders/` also preserves configs written by older Qt builds, while current Decky and Qt saves use the canonical per-user copies under `~/.config/mako-render/vkbasalt/shaders/`.
+`InstallationService._renderer_file_inventory()` is the Decky file-set owner: archive extraction and installed-payload checks consume its required and optional mappings, while rollback and uninstall consume all of its managed paths. It includes both layer chains, private and registered manifests, managed Gamescope/MangoHud/vkBasalt files, the packaged vkBasalt shader catalog, the required Gamescope VRR lease helper, the optional CLI, both identity records, `mako-run`, and `mako-diagnostics`. Add any new file written or removed by the installation body to that inventory before relying on rollback. The standalone installer remains independently deployed and keeps its own native cleanup list; a cross-component test requires that list to match Decky's inventory. Standalone binaries and its ownership manifest are outside the Decky set; shared entries overwritten by Decky are inside it. Keeping the packaged catalog under `~/.local/share/mako-render/vkbasalt-shaders/` also preserves configs written by older Qt builds, while current Decky and Qt saves use the canonical per-user copies under `~/.config/mako-render/vkbasalt/shaders/`.
 
 ### File replacement and backup mechanics
 
@@ -94,15 +94,16 @@ Before replacement starts, failure only needs staging cleanup. During replacemen
 
 | Portable evidence | Covered behavior |
 | --- | --- |
-| [test_dual_arch_installation.py](plugin/tests/test_dual_arch_installation.py) | Archive checksum/host/marker rejection, complete optional 32-bit chain, manifest rewriting, shared-owner selection, file modes and symlinks, failed copy preservation, reverse restoration of deleted/new files, retained recovery backups, configuration fallback/rollback, restrictive-umask no-op and late install failure |
+| [test_dual_arch_installation.py](plugin/tests/test_dual_arch_installation.py) | Archive checksum/host/marker rejection, complete optional 32-bit chain, manifest rewriting, shared-owner selection, Decky/standalone cleanup-list agreement, required VRR helper completeness/rollback/uninstall, diagnostics preservation, file modes and symlinks, failed copy preservation, reverse restoration of deleted/new files, retained recovery backups, configuration fallback/rollback, restrictive-umask no-op and late install failure |
+| [test_native_renderer_lifecycle_matrix.py](plugin/tests/test_native_renderer_lifecycle_matrix.py) | Standalone and Decky installation order, matched-version adoption, both uninstaller paths, and preservation of configuration and unrelated Flatpak data |
 | [test_plugin_installation.py](plugin/tests/test_plugin_installation.py) | Native-install/Flatpak-refresh result handling, including skipping refresh after native failure and retaining native success after a reported refresh failure |
-| [test-mako-installer.sh](engine/scripts/test-mako-installer.sh) | Manifest/desktop rewriting, corrupt late payload before replacement, injected final identity-rename failure, restored payload/ownership/identity, new-file removal, staging cleanup, permission failures, successful retry and post-commit UI failure; registered as CTest `standalone-installer` |
+| [test-mako-installer.sh](engine/scripts/test-mako-installer.sh) | Manifest/desktop rewriting, corrupt late payload before replacement, injected final identity-rename failure, restored payload/ownership/identity, new-file removal, staging cleanup, permission failures, successful retry, post-commit UI failure, Decky private-payload coexistence, diagnostics preservation, and explicit configuration purge; registered as CTest `standalone-installer` |
 | [test_package_contract.py](plugin/tests/test_package_contract.py) and [test_path_package_contract.py](plugin/tests/test_path_package_contract.py) | Package identities/layout and cross-component managed paths |
 
 Run the focused installer checks from the repository root:
 
 ```bash
-(cd plugin && python3 -m unittest discover -s tests -p 'test_*installation.py')
+(cd plugin && python3 -m unittest tests.test_dual_arch_installation tests.test_native_renderer_lifecycle_matrix tests.test_plugin_installation tests.test_diagnostics_helper)
 bash engine/scripts/test-mako-installer.sh
 ```
 

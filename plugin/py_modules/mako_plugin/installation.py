@@ -8,6 +8,7 @@ import tarfile
 import tempfile
 import json
 import hashlib
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Optional, TypedDict, cast
 
@@ -87,6 +88,24 @@ class ActiveRendererState(TypedDict, total=False):
     sha256hash: str
 
 
+@dataclass(frozen=True)
+class RendererFileInventory:
+    """One inventory for archive selection, rollback, and native cleanup."""
+
+    required_archive: dict[str, Path]
+    optional_32bit_archive: dict[str, Path]
+    optional_archive: dict[str, Path]
+    generated: tuple[Path, ...]
+
+    def managed_paths(self) -> list[Path]:
+        return list(dict.fromkeys((
+            *self.required_archive.values(),
+            *self.optional_32bit_archive.values(),
+            *self.optional_archive.values(),
+            *self.generated,
+        )))
+
+
 class InstallationService(BaseService):
     """Service for handling MAKO Renderer installation and uninstallation"""
 
@@ -162,6 +181,9 @@ class InstallationService(BaseService):
         self.standalone_vkbasalt_lib32_file = (
             self.standalone_install_prefix / "lib32" / "vkbasalt" /
             VKBASALT_LIB_FILENAME
+        )
+        self.standalone_vrr_lease_file = (
+            self.standalone_install_prefix / "bin" / VRR_LEASE_FILENAME
         )
         self.standalone_installer_state_file = (
             self.user_home / STANDALONE_INSTALLER_STATE_RELATIVE_PATH
@@ -468,44 +490,41 @@ class InstallationService(BaseService):
             self, owner: str, expects_32bit: bool) -> bool:
         """Return whether the selected managed native payload is complete."""
         if owner == ACTIVE_RENDERER_OWNER_STANDALONE:
-            lib_file = self.standalone_lib_file
-            lib32_file = self.standalone_lib32_file
-            scaling_lib_file = self.standalone_spatial_scaling_lib_file
-            scaling_lib32_file = self.standalone_spatial_scaling_lib32_file
-            vkbasalt_lib_file = self.standalone_vkbasalt_lib_file
-            vkbasalt_lib32_file = self.standalone_vkbasalt_lib32_file
+            required_files = (
+                self.standalone_lib_file,
+                self.standalone_vrr_lease_file,
+                self.json_file,
+                self.standalone_spatial_scaling_lib_file,
+                self.spatial_scaling_json_file,
+                self.registered_json_file,
+                self.standalone_vkbasalt_lib_file,
+                self.vkbasalt_manifest,
+                *(self.renderer_vkbasalt_shader_dir / filename
+                  for filename in VKBASALT_SHADER_ASSET_FILENAMES),
+            )
+            optional_32bit_files = (
+                self.standalone_lib32_file,
+                self.json32_file,
+                self.standalone_spatial_scaling_lib32_file,
+                self.spatial_scaling_json32_file,
+                self.registered_json32_file,
+                self.standalone_vkbasalt_lib32_file,
+                self.vkbasalt_manifest32,
+            )
         else:
-            lib_file = self.lib_file
-            lib32_file = self.lib32_file
-            scaling_lib_file = self.spatial_scaling_lib_file
-            scaling_lib32_file = self.spatial_scaling_lib32_file
-            vkbasalt_lib_file = self.vkbasalt_lib_file
-            vkbasalt_lib32_file = self.vkbasalt_lib32_file
-
-        required_files = (
-            lib_file,
-            self.json_file,
-            scaling_lib_file,
-            self.spatial_scaling_json_file,
-            self.registered_json_file,
-            vkbasalt_lib_file,
-            self.vkbasalt_manifest,
-            *(self.renderer_vkbasalt_shader_dir / filename
-              for filename in VKBASALT_SHADER_ASSET_FILENAMES),
+            inventory = self._renderer_file_inventory()
+            required_files = (
+                *inventory.required_archive.values(),
+                self.registered_json_file,
+            )
+            optional_32bit_files = (
+                *inventory.optional_32bit_archive.values(),
+                self.registered_json32_file,
+            )
+        return all(path.is_file() for path in required_files) and (
+            not expects_32bit or
+            all(path.is_file() for path in optional_32bit_files)
         )
-        if not all(path.is_file() for path in required_files):
-            return False
-        if not expects_32bit:
-            return True
-        return all(path.is_file() for path in (
-            lib32_file,
-            self.json32_file,
-            scaling_lib32_file,
-            self.spatial_scaling_json32_file,
-            self.registered_json32_file,
-            vkbasalt_lib32_file,
-            self.vkbasalt_manifest32,
-        ))
 
     def prepare_active_standalone_for_decky(self) -> bool:
         """Create Decky's wrapper when a standalone payload is already active."""
@@ -528,16 +547,8 @@ class InstallationService(BaseService):
         self._create_mako_launch_script()
         return True
 
-    def _extract_and_install_files(self, archive_path: Path) -> None:
-        """Install the layer, manifest, and optional CLI from an upstream tar.xz.
-
-        Args:
-            archive_path: Path to the tar.xz archive to extract
-
-        Raises:
-            tarfile.TarError: If the archive is corrupted
-            OSError: If file operations fail
-        """
+    def _renderer_file_inventory(self) -> RendererFileInventory:
+        """Declare every file owned by a native Decky Renderer installation."""
         required_destinations = {
             f"bin/{VRR_LEASE_FILENAME}": self.vrr_lease_file,
             f"lib/{LIB_FILENAME}": self.lib_file,
@@ -568,7 +579,30 @@ class InstallationService(BaseService):
             f"share/mako-render/vulkan/vkbasalt.d/{VKBASALT_MANIFEST_FILENAME_32}":
                 self.vkbasalt_manifest32,
         }
-        destinations = {**required_destinations, **optional_32bit_destinations}
+        return RendererFileInventory(
+            required_archive=required_destinations,
+            optional_32bit_archive=optional_32bit_destinations,
+            optional_archive={f"bin/{CLI_FILENAME}": self.cli_file},
+            generated=(
+                self.registered_json_file, self.registered_json32_file,
+                self.gamescope_wsi_compatibility_manifest,
+                self.gamescope_wsi_compatibility_library,
+                self.mangohud_manifest, self.mangohud_manifest32,
+                self.engine_state_file, self.active_renderer_state_file,
+                self.mako_script_path, self.diagnostics_script_path,
+            ),
+        )
+
+    def _extract_and_install_files(self, archive_path: Path) -> None:
+        """Install validated archive members at their managed destinations."""
+        inventory = self._renderer_file_inventory()
+        required_destinations = inventory.required_archive
+        optional_32bit_destinations = inventory.optional_32bit_archive
+        destinations = {
+            **required_destinations,
+            **optional_32bit_destinations,
+            **inventory.optional_archive,
+        }
         # Keep staging in MAKO's user-owned data directory. Armada currently
         # runs Decky through FEX, whose translated /tmp mount has produced
         # permission errors while handling native Vulkan-layer files.
@@ -1340,24 +1374,7 @@ class InstallationService(BaseService):
 
     def _decky_renderer_files(self) -> list[Path]:
         """Return every native Renderer file directly managed by MAKO Decky."""
-        return [
-            self.lib_file, self.lib32_file, self.json_file, self.json32_file,
-            self.spatial_scaling_lib_file,
-            self.spatial_scaling_lib32_file,
-            self.spatial_scaling_json_file,
-            self.spatial_scaling_json32_file,
-            self.registered_json_file, self.registered_json32_file,
-            self.gamescope_wsi_compatibility_manifest,
-            self.gamescope_wsi_compatibility_library,
-            self.mangohud_manifest, self.mangohud_manifest32,
-            self.vkbasalt_lib_file, self.vkbasalt_lib32_file,
-            self.vkbasalt_manifest, self.vkbasalt_manifest32,
-            *(self.renderer_vkbasalt_shader_dir / filename
-              for filename in VKBASALT_SHADER_ASSET_FILENAMES),
-            self.cli_file, self.engine_state_file,
-            self.active_renderer_state_file,
-            self.mako_script_path, self.diagnostics_script_path,
-        ]
+        return self._renderer_file_inventory().managed_paths()
 
     def _standalone_installer_entries(self) -> list[tuple[str, Path]]:
         """Validate the standalone installer's checksummed ownership record."""
