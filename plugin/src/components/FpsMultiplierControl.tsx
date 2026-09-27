@@ -496,7 +496,7 @@ export function FpsMultiplierControl({
               label={t("GAMESCOPE_VRR_MODE", "Gamescope VRR")}
               description={t(
                 "GAMESCOPE_VRR_MODE_DESC",
-                "Disabling VRR lets MAKO control frame pacing. This can improve frame generation in some games but not others, so test it per game.",
+                "Disabling VRR lets MAKO control frame pacing. This can improve frame generation in some games but not others, so test it per game. If your device or display does not support VRR, this setting has no effect.",
               )}
               childrenLayout="below"
               childrenContainerWidth="max"

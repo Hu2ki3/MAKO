@@ -224,7 +224,7 @@ void test_scaling_catalogs(const QByteArray& catalog, const QString& settings_fi
             QStringLiteral("Scaling Method"),
         "English scaling method has an unexpected label");
     require(english.value(QStringLiteral("scalingEnabledDesc")).toString() ==
-            QStringLiteral("Enable before launch for Lossless Scaling or MAKO Scaler; off disables scaling."),
+            QStringLiteral("Enable before launch for Lossless Scaling or MAKO Scaler; off disables scaling. Some games may require Windowed mode; Borderless Fullscreen may also work."),
         "English scaling help does not match the Decky guidance");
     require(english.value(QStringLiteral("scalingMethodDesc")).toString() ==
             QStringLiteral("Choose the scaling model. You can change it while the game is running."),

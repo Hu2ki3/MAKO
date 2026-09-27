@@ -735,7 +735,7 @@ export function ShadersConfigurationGroup({
           }
           description={t(
             "CONFIG_ENABLE_VKBASALT_DESC",
-            "Enable before launch for bundled sharpening, anti-aliasing, and shaders. No separate install. If effects are invisible, switch Windowed/Fullscreen.",
+            "Enable before launch for bundled sharpening, anti-aliasing, and shaders. No separate install. If effects are invisible, try Windowed or Borderless Fullscreen mode.",
           )}
           bottomSeparator={vkBasaltEnabled ? undefined : "none"}
           checked={vkBasaltEnabled}
