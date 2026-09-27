@@ -4,6 +4,7 @@
 #include "swapchain/present/internal.hpp"
 #include "swapchain/retirement.hpp"
 #include "adaptive_scheduler.hpp"
+#include "gamescope_scaling_surface.hpp"
 #include "mako-common/helpers/errors.hpp"
 #include "mako-common/vulkan/command_buffer.hpp"
 #include "mako-common/vulkan/image.hpp"
@@ -38,6 +39,20 @@ VkResult Swapchain::queuePresentWithRetirementFence(
         const vk::Vulkan& vk, const VkQueue queue,
         const VkPresentInfoKHR& presentInfo) {
     this->lastLowerPresentRetirementProtected = false;
+    // The protocol mode applies to one surface commit. Preparing only the
+    // application's outer present would leave the remaining generated/real
+    // outputs unannotated and allow the compositor to replace them.
+    if (this->info.gamescopeScalingSurface) {
+        for (uint32_t i = 0; i < presentInfo.swapchainCount; ++i) {
+            if (!this->info.gamescopeScalingSurface->preparePresent(
+                    this->info.surface, presentInfo.pSwapchains[i],
+                    gamescopeBridgeOutputFps(this->profile,
+                        this->gamescopeRefreshHz.value_or(0)),
+                    this->gamescopeRefreshHz.value_or(0),
+                    this->bridgeOutputBatchSize))
+                return VK_ERROR_SURFACE_LOST_KHR;
+        }
+    }
     if (this->presentRetirementFences.empty() ||
             presentInfo.swapchainCount != 1 ||
             !presentInfo.pImageIndices) {

@@ -2333,7 +2333,8 @@ namespace {
                     !instance_info->scalingSurfaces->createSwapchain(
                         info->surface, *swapchain, newInfo, imageCount,
                         instance_info->engineName,
-                        modification.gamescopeProtocolPresentMode)) {
+                        modification.gamescopeProtocolPresentMode,
+                        modification.gamescopePresentRefreshHz)) {
                 throw ls::vulkan_error(
                     VK_ERROR_SURFACE_LOST_KHR,
                     "Gamescope scaling surface swapchain feedback failed"
@@ -2367,6 +2368,9 @@ namespace {
             auto& swapchainInfo = instance_info->swapchainInfos.emplace(*swapchain, SwapchainInfo {
                 .images = std::move(swapchainImages),
                 .surface = info->surface,
+                .gamescopeScalingSurface = instance_info->scalingSurfaces &&
+                        instance_info->scalingSurfaces->owns(info->surface)
+                    ? instance_info->scalingSurfaces.get() : nullptr,
                 .format = newInfo.imageFormat,
                 .colorSpace = newInfo.imageColorSpace,
                 .requestedMinImageCount = info->minImageCount,
@@ -2515,7 +2519,8 @@ namespace {
         if (instance_info->scalingSurfaces) {
             for (uint32_t i = 0; i < info->swapchainCount; ++i) {
                 const auto metadata = instance_info->swapchainInfos.find(info->pSwapchains[i]);
-                if (metadata != instance_info->swapchainInfos.end() &&
+                if (instance_info->nativeSwapchains.contains(info->pSwapchains[i]) &&
+                        metadata != instance_info->swapchainInfos.end() &&
                         !instance_info->scalingSurfaces->preparePresent(
                             metadata->second.surface, info->pSwapchains[i])) {
                     if (info->pResults)

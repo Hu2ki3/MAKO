@@ -700,6 +700,24 @@ namespace mako::layer {
         };
     }
 
+    /// The bridge follows the same output ceiling as generation policy. Exact
+    /// Fixed with a manual source cap may intentionally deliver below refresh.
+    /// Disabled generation and uncapped Fixed retain the display ceiling.
+    [[nodiscard]] inline double gamescopeBridgeOutputFps(
+            const ls::GameConf& profile, const uint32_t refreshHz) {
+        double outputFps = static_cast<double>(refreshHz);
+        if (effectiveFrameGenerationEnabled(profile, refreshHz)) {
+            if (profile.adaptive)
+                outputFps = std::min(outputFps,
+                    static_cast<double>(profile.target_fps));
+            else if (effectiveBaseFpsCap(profile) > 0.0)
+                outputFps = std::min(outputFps,
+                    effectiveBaseFpsCap(profile) *
+                        static_cast<double>(profile.multiplier));
+        }
+        return outputFps;
+    }
+
     /// Reserve one private output set that can serve both Fixed and Adaptive.
     /// Ultra Performance deliberately keeps only the active policy. A live
     /// mode or multiplier change that needs a different capacity prepares and

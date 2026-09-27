@@ -26,6 +26,7 @@
 #include <iostream>
 #include <optional>
 #include <sstream>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -1458,15 +1459,34 @@ SwapchainCreateModification Root::modifySwapchainCreateInfo(const vk::Vulkan& vk
     }
     createInfo.pNext = presentModes.head();
 
+    bool lowerMailboxSupported = false;
+    if (gamescopeScalingSurface && modification.privateOrderedTransport &&
+            vk.fi().GetPhysicalDeviceSurfacePresentModesKHR) {
+        // This bounded create-time query leaves FIFO intact if the driver
+        // cannot prove support. No capability query belongs in presentation.
+        std::array<VkPresentModeKHR, 16> modes{};
+        uint32_t count = static_cast<uint32_t>(modes.size());
+        const auto result = vk.fi().GetPhysicalDeviceSurfacePresentModesKHR(
+            vk.physdev(), createInfo.surface, &count, modes.data()
+        );
+        lowerMailboxSupported = result == VK_SUCCESS && count <= modes.size() &&
+            std::ranges::find(std::span{modes}.first(count),
+                VK_PRESENT_MODE_MAILBOX_KHR) != std::span{modes}.first(count).end();
+    }
     const auto gamescopePresentContract =
         gamescopeScalingPresentContract(
             createInfo.presentMode,
             gamescopeScalingSurface,
-            modification.privateOrderedTransport
+            modification.privateOrderedTransport,
+            lowerMailboxSupported,
+            this->gamescopeRefreshHz &&
+                OrderedPresentTimeline::validRate(*this->gamescopeRefreshHz)
         );
     createInfo.presentMode = gamescopePresentContract.lowerPresentMode;
     modification.gamescopeProtocolPresentMode =
         gamescopePresentContract.compositorPresentMode;
+    if (modification.gamescopeProtocolPresentMode)
+        modification.gamescopePresentRefreshHz = *this->gamescopeRefreshHz;
 
     finish();
     if (modification.spatialScalingActive && !spatialExtentOwner) {

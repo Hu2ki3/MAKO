@@ -19,6 +19,9 @@ extern "C" {
     int mako_test_surface_associations();
     int mako_test_surface_feedbacks();
     int mako_test_surface_present_modes();
+    int mako_test_surface_present_times();
+    uint32_t mako_test_surface_present_id();
+    uint64_t mako_test_surface_present_time();
     uint32_t mako_test_surface_present_mode();
     uint32_t mako_test_surface_feedback_image_count();
     const char* mako_test_surface_feedback_engine();
@@ -314,9 +317,30 @@ int main() {
                 "an unrepresentable extent must not fabricate supported capabilities");
         }
         checkApplicationExtent(bridge, surface, {1920, 1080});
+        const auto timedSwapchain = reinterpret_cast<VkSwapchainKHR>(static_cast<uintptr_t>(500));
+        expect(bridge.createSwapchain(surface, timedSwapchain, feedbackInfo, 5,
+                "MAKO Renderer", VK_PRESENT_MODE_FIFO_KHR, 120),
+            "timed bridge creation");
+        const int times = mako_test_surface_present_times();
+        uint64_t previousTime = 0;
+        for (uint32_t output = 1; output <= 3; ++output) {
+            const auto before = std::chrono::steady_clock::now();
+            expect(bridge.preparePresent(surface, timedSwapchain, 120, 120),
+                "timed generated/real bridge output");
+            const auto ns = mako_test_surface_present_time();
+            const auto nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                before.time_since_epoch()).count();
+            expect(mako_test_surface_present_times() == times + static_cast<int>(output) &&
+                    mako_test_surface_present_id() == output && ns > previousTime &&
+                    ns >= static_cast<uint64_t>(nowNs) + 16000000 &&
+                    ns <= static_cast<uint64_t>(nowNs) + 50000000,
+                "protocol lost per-output id or monotonic 64-bit future deadline");
+            previousTime = ns;
+        }
+        bridge.destroySwapchain(surface, timedSwapchain);
         const int associations = mako_test_surface_associations();
         const int presentModes = mako_test_surface_present_modes();
-        expect(associations == 0, "surface creation must not steal existing window content");
+        expect(associations == 3, "surface creation must not steal existing window content");
         const int reads = mako_test_surface_reads();
         const int presentGeometryQueries = mako_test_surface_geometry_queries();
         for (int frame = 0; frame < 100; ++frame)

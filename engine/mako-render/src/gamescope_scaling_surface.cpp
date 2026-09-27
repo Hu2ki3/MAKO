@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "gamescope_scaling_surface.hpp"
+#include "presentation_policy.hpp"
 
 #include <algorithm>
 #include <array>
@@ -13,6 +14,7 @@
 #include <mutex>
 #include <poll.h>
 #include <sys/socket.h>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <X11/Xlib.h>
@@ -142,6 +144,9 @@ struct GamescopeScalingSurface::Impl {
         Impl* owner{};
         wl_proxy* proxy{};
         bool retired{};
+        uint32_t refreshHz{};
+        uint32_t presentId{};
+        OrderedPresentTimeline presentTimeline;
         std::optional<VkPresentModeKHR> compositorPresentMode;
         ~Content() {
             if (owner)
@@ -510,7 +515,8 @@ bool GamescopeScalingSurface::createSwapchain(
         const VkSurfaceKHR surface, const VkSwapchainKHR swapchain,
         const VkSwapchainCreateInfoKHR& info, const uint32_t imageCount,
         const std::string_view engineName,
-        const std::optional<VkPresentModeKHR> compositorPresentMode) {
+        const std::optional<VkPresentModeKHR> compositorPresentMode,
+        const uint32_t refreshHz) {
     const std::lock_guard lock(impl->mutex);
     const auto found = impl->surfaces.find(surface);
     if (found == impl->surfaces.end())
@@ -522,6 +528,7 @@ bool GamescopeScalingSurface::createSwapchain(
     auto content = std::make_unique<Impl::Content>();
     content->owner = impl.get();
     content->compositorPresentMode = compositorPresentMode;
+    content->refreshHz = refreshHz;
     wl_argument createArgs[2]{{.o = state.surface}, {.o = nullptr}};
     content->proxy = impl->marshal(
         impl->factory, 1, &impl->contentInterface, 1, 0, createArgs
@@ -709,9 +716,11 @@ GamescopeScalingSurface::applicationFormats(
 }
 
 bool GamescopeScalingSurface::preparePresent(
-        const VkSurfaceKHR surface, const VkSwapchainKHR swapchain) {
-    const std::lock_guard lock(impl->mutex);
-    const auto found = impl->surfaces.find(surface);
+        const VkSurfaceKHR surface, const VkSwapchainKHR swapchain,
+        const double outputFps, const uint32_t refreshHz,
+        const size_t outputBatchSize) {
+    std::unique_lock lock(impl->mutex);
+    auto found = impl->surfaces.find(surface);
     if (found == impl->surfaces.end())
         return true;
     // Mesa's WSI dispatches the shared socket for its own event queue. Drain
@@ -720,11 +729,33 @@ bool GamescopeScalingSurface::preparePresent(
     if (impl->dispatchPending(impl->display, impl->queue) < 0 ||
             impl->displayGetError(impl->display) != 0)
         return false;
-    auto& state = *found->second;
-    const auto content = state.contents.find(swapchain);
-    if (content == state.contents.end() || content->second->retired)
+    auto content = found->second->contents.find(swapchain);
+    if (content == found->second->contents.end() || content->second->retired)
         return false;
-    wl_argument args[2]{{.u = state.server}, {.u = state.window}};
+    std::optional<OrderedPresentTimeline::Slot> slot;
+    if (content->second->compositorPresentMode == VK_PRESENT_MODE_FIFO_KHR &&
+            OrderedPresentTimeline::validRate(content->second->refreshHz)) {
+        if (OrderedPresentTimeline::validRate(refreshHz))
+            content->second->refreshHz = refreshHz;
+        slot = content->second->presentTimeline.schedule(
+            OrderedPresentTimeline::Clock::now(),
+            OrderedPresentTimeline::validRate(outputFps)
+                ? outputFps : content->second->refreshHz,
+            content->second->refreshHz, outputBatchSize);
+        if (!slot)
+            return false;
+        // No GPU-idle wait and no adapter lock held during backpressure.
+        lock.unlock();
+        std::this_thread::sleep_until(slot->submitAt);
+        lock.lock();
+        found = impl->surfaces.find(surface);
+        if (found == impl->surfaces.end())
+            return false;
+        content = found->second->contents.find(swapchain);
+        if (content == found->second->contents.end() || content->second->retired)
+            return false;
+    }
+    wl_argument args[2]{{.u = found->second->server}, {.u = found->second->window}};
     impl->marshal(content->second->proxy, 1, nullptr, 1, 0, args);
     if (content->second->compositorPresentMode) {
         wl_argument mode{
@@ -733,6 +764,17 @@ bool GamescopeScalingSurface::preparePresent(
             ),
         };
         impl->marshal(content->second->proxy, 3, nullptr, 1, 0, &mode);
+    }
+    if (slot) {
+        const auto ns = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                slot->presentAt.time_since_epoch()).count());
+        wl_argument timing[3]{
+            {.u = ++content->second->presentId},
+            {.u = static_cast<uint32_t>(ns >> 32)},
+            {.u = static_cast<uint32_t>(ns)},
+        };
+        impl->marshal(content->second->proxy, 5, nullptr, 1, 0, timing);
     }
     if (impl->displayFlush(impl->display) < 0 && errno != EAGAIN)
         return false;

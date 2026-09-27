@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "generated_frame_plan.hpp"
+
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -877,6 +879,54 @@ namespace mako::layer {
         bool historyWarmupRequested{false};
         size_t totalBypassedFrames{0};
         size_t totalRecoveries{0};
+    };
+
+    /// Spaces the private bridge's compositor commits without waiting for a
+    /// lower Wayland FIFO callback. Allow at least two refresh periods or one
+    /// admitted output batch for asynchronous GPU work to become ready. Bound
+    /// submission to that lead plus one refresh period; larger batches cannot
+    /// accumulate an unbounded queue, and unused configured capacity adds none.
+    /// Keep the last deadline across live changes: already queued images must
+    /// not be overtaken. A late frame rebases instead of accruing catch-up debt.
+    class OrderedPresentTimeline {
+    public:
+        using Clock = std::chrono::steady_clock;
+        using TimePoint = Clock::time_point;
+        struct Slot {
+            TimePoint submitAt;
+            TimePoint presentAt;
+        };
+
+        [[nodiscard]] static bool validRate(const double fps) noexcept {
+            return std::isfinite(fps) && fps >= 1.0 && fps <= 1000.0;
+        }
+
+        [[nodiscard]] std::optional<Slot> schedule(const TimePoint now,
+                const double outputFps, const double refreshFps,
+                const size_t outputBatchSize = 1) {
+            if (!validRate(outputFps) || !validRate(refreshFps) ||
+                    outputBatchSize == 0 ||
+                    outputBatchSize > GeneratedFramePlan::capacity + 1)
+                return std::nullopt;
+            const auto period = [](const double fps) {
+                return std::chrono::duration_cast<Clock::duration>(
+                    std::chrono::duration<double>(1.0 / fps));
+            };
+            const auto refreshPeriod = period(refreshFps);
+            const auto interval = period(std::min(outputFps, refreshFps));
+            const auto lead = std::max(2 * refreshPeriod,
+                interval * static_cast<int64_t>(outputBatchSize));
+            const auto presentAt = std::max(now + lead,
+                this->lastPresentAt ? *this->lastPresentAt + interval : now);
+            this->lastPresentAt = presentAt;
+            return Slot{
+                .submitAt = std::max(now, presentAt - lead - refreshPeriod),
+                .presentAt = presentAt,
+            };
+        }
+
+    private:
+        std::optional<TimePoint> lastPresentAt;
     };
 
     /// Limits application presents before frame-generation policy observes

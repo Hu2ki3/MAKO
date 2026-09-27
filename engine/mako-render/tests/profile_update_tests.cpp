@@ -41,6 +41,27 @@ namespace {
 }
 
 int main() {
+    auto bridgeProfile = ls::GameConf{};
+    bridgeProfile.frame_generation_provisioned = true;
+    bridgeProfile.frame_generation_enabled = true;
+    bridgeProfile.adaptive = true;
+    bridgeProfile.target_fps = 90;
+    expect(gamescopeBridgeOutputFps(bridgeProfile, 120) == 90 &&
+            gamescopeBridgeOutputFps(bridgeProfile, 60) == 60,
+        "bridge must respect Adaptive target and display ceiling");
+    bridgeProfile.adaptive = false;
+    bridgeProfile.multiplier = 3;
+    bridgeProfile.base_fps_cap = 30;
+    expect(gamescopeBridgeOutputFps(bridgeProfile, 120) == 90,
+        "bridge must retain exact Fixed below-refresh output");
+    bridgeProfile.base_fps_cap = 0;
+    expect(gamescopeBridgeOutputFps(bridgeProfile, 144) == 144,
+        "uncapped Fixed must follow refresh without borrowing Adaptive target");
+    bridgeProfile.frame_generation_enabled = false;
+    bridgeProfile.adaptive = true;
+    bridgeProfile.target_fps = 30;
+    expect(gamescopeBridgeOutputFps(bridgeProfile, 120) == 120,
+        "live disabled generation must release its output ceiling");
     GenerationPolicyResetGate resetGate;
     expect(!resetGate.pending() && !resetGate.consumeOnResume(),
         "A fresh policy-reset gate must not invent deferred work");

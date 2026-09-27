@@ -90,7 +90,76 @@ namespace {
     }
 }
 
+void testOrderedPresentationTimeline() {
+    using Clock = OrderedPresentTimeline::Clock;
+    const auto start = Clock::time_point{10s};
+    for (const double refresh : {30., 40., 60., 90., 120., 144., 240.}) {
+        const auto period = std::chrono::duration_cast<Clock::duration>(
+            std::chrono::duration<double>(1.0 / refresh));
+        for (size_t multiplier = 2; multiplier <= 5; ++multiplier) {
+            OrderedPresentTimeline timeline;
+            auto now = start;
+            auto last = start;
+            for (size_t batch = 0; batch < 60; ++batch) {
+                // Outputs arrive as a burst from each generated batch.
+                for (size_t output = 0; output < multiplier; ++output) {
+                    const auto slot = timeline.schedule(now, refresh, refresh, multiplier);
+                    expect(slot && slot->presentAt > last,
+                        "bridge burst overtook an earlier output");
+                    now = slot->submitAt;
+                    const auto lead = period * static_cast<int64_t>(multiplier);
+                    expect(slot->presentAt - now >= lead &&
+                            slot->presentAt - now <= lead + period,
+                        "bridge queue escaped its refresh-relative bounds");
+                    if (batch > 0)
+                        expect(slot->presentAt - last == period,
+                            "bridge burst lost uniform output spacing");
+                    last = slot->presentAt;
+                }
+            }
+            const auto late = timeline.schedule(now + 2s, refresh, refresh);
+            expect(late->submitAt == now + 2s &&
+                    late->presentAt == now + 2s + 2 * period,
+                "loading stall left catch-up debt in the bridge");
+        }
+    }
+    OrderedPresentTimeline timeline;
+    const auto slow = timeline.schedule(start, 30, 120);
+    const auto slowNext = timeline.schedule(start, 30, 120);
+    expect(slowNext->presentAt - slow->presentAt >= 33ms &&
+            slowNext->presentAt - slowNext->submitAt <= 42ms,
+        "below-refresh target escaped its batch-relative queue bound");
+    const auto changed = timeline.schedule(slowNext->submitAt, 240, 240);
+    expect(changed->presentAt > slowNext->presentAt &&
+            changed->presentAt - changed->submitAt <= 12500us,
+        "live refresh/target change overtook queued output or lost its bound");
+    expect(!timeline.schedule(start, 120, 120, 0) &&
+            !timeline.schedule(start, 120, 120, GeneratedFramePlan::capacity + 2),
+        "bridge accepted an unbounded generated batch");
+    OrderedPresentTimeline fractional;
+    auto last = start;
+    for (size_t frame = 0; frame < 40; ++frame) {
+        auto arrival = start + 50ms * static_cast<int64_t>(frame);
+        const size_t count = frame % 2 == 0 ? 5 : 4;
+        for (size_t output = 0; output < count; ++output) {
+            const auto slot = fractional.schedule(arrival, 90, 120, count);
+            expect(slot->presentAt > last && slot->presentAt - slot->submitAt < 64ms,
+                "alternating fractional batches lost ordering or grew the queue");
+            arrival = slot->submitAt;
+            last = slot->presentAt;
+        }
+    }
+    for (const double invalid : {0., -1., 1001.,
+            std::numeric_limits<double>::infinity(),
+            std::numeric_limits<double>::quiet_NaN()}) {
+        expect(!timeline.schedule(start, invalid, 120) &&
+                !timeline.schedule(start, 120, invalid),
+            "bridge accepted an invalid timing clock");
+    }
+}
+
 int main() {
+    testOrderedPresentationTimeline();
     testOrderedAcquireUsesExplicitFailureOnly();
     testOrderedAcquireBackoffAndProbeAreFinite();
     testExternalInterruptionDiscardsOldFailure();

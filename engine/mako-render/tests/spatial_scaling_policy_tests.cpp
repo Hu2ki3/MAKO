@@ -1704,21 +1704,33 @@ int main() {
             combinedCreate.presentMode == VK_PRESENT_MODE_FIFO_KHR,
         "A configured combined profile must reserve two generated outputs without a duplicate real-frame slot before the lower scaling relay arrives");
     const auto isolatedOrderedPresent = gamescopeScalingPresentContract(
-        combinedCreate.presentMode, true, combinedPrivateTransport
+        combinedCreate.presentMode, true, combinedPrivateTransport, true, true
     );
     expect(isolatedOrderedPresent.lowerPresentMode ==
-            VK_PRESENT_MODE_FIFO_KHR &&
-            !isolatedOrderedPresent.compositorPresentMode,
-        "The isolated Gamescope scaling bridge must retain lower FIFO so generated and real presents cannot be coalesced before a surface commit");
+            VK_PRESENT_MODE_MAILBOX_KHR &&
+            isolatedOrderedPresent.compositorPresentMode == VK_PRESENT_MODE_FIFO_KHR,
+        "The isolated bridge must let per-output Gamescope FIFO own ordering without a second lower FIFO wait");
+    const auto unavailableMailboxPresent = gamescopeScalingPresentContract(
+        combinedCreate.presentMode, true, combinedPrivateTransport, false, true
+    );
+    expect(unavailableMailboxPresent.lowerPresentMode == VK_PRESENT_MODE_FIFO_KHR &&
+            !unavailableMailboxPresent.compositorPresentMode,
+        "An unproven lower MAILBOX mode must retain the established FIFO fallback");
+    const auto unknownRefreshPresent = gamescopeScalingPresentContract(
+        combinedCreate.presentMode, true, combinedPrivateTransport, true, false
+    );
+    expect(unknownRefreshPresent.lowerPresentMode == VK_PRESENT_MODE_FIFO_KHR &&
+            !unknownRefreshPresent.compositorPresentMode,
+        "An unknown refresh clock must retain the lower FIFO fallback");
     const auto ordinaryOrderedPresent = gamescopeScalingPresentContract(
-        combinedCreate.presentMode, false, combinedPrivateTransport
+        combinedCreate.presentMode, false, combinedPrivateTransport, true, true
     );
     expect(ordinaryOrderedPresent.lowerPresentMode ==
             VK_PRESENT_MODE_FIFO_KHR &&
             !ordinaryOrderedPresent.compositorPresentMode,
         "An ordinary ordered surface must retain MAKO's lower FIFO owner");
     const auto scalingOnlyPresent = gamescopeScalingPresentContract(
-        scalingOnlyCreate.presentMode, true, scalingOnlyPrivateTransport
+        scalingOnlyCreate.presentMode, true, scalingOnlyPrivateTransport, true, true
     );
     expect(scalingOnlyPresent.lowerPresentMode ==
             VK_PRESENT_MODE_MAILBOX_KHR &&

@@ -19,20 +19,21 @@ namespace mako::layer {
         std::optional<VkPresentModeKHR> compositorPresentMode;
     };
 
-    /// The lower Wayland WSI must retain the ordered FIFO constraint for
-    /// combined scaling and Frame Generation. Gamescope's protocol annotates
-    /// individual surface commits, but it cannot stop a lower MAILBOX
-    /// swapchain from coalescing generated and real Vulkan presents before a
-    /// commit exists. The adapter's per-present association and per-swapchain
-    /// lifetime handling own Steam UI recovery independently.
+    /// Every private bridge output needs FIFO plus a distinct bounded future
+    /// deadline: FIFO alone can still lose outputs that become ready together.
+    /// MAILBOX avoids the second Wayland FIFO callback on the game's thread;
+    /// retain lower FIFO unless both that mode and a timing clock are proven.
     [[nodiscard]] constexpr GamescopeScalingPresentContract
     gamescopeScalingPresentContract(const VkPresentModeKHR intendedPresentMode,
             const bool gamescopeScalingSurface,
-            const bool privateOrderedTransport) noexcept {
-        if (gamescopeScalingSurface && privateOrderedTransport) {
+            const bool privateOrderedTransport,
+            const bool lowerMailboxSupported,
+            const bool refreshKnown) noexcept {
+        if (gamescopeScalingSurface && privateOrderedTransport &&
+                lowerMailboxSupported && refreshKnown) {
             return {
-                .lowerPresentMode = intendedPresentMode,
-                .compositorPresentMode = std::nullopt,
+                .lowerPresentMode = VK_PRESENT_MODE_MAILBOX_KHR,
+                .compositorPresentMode = VK_PRESENT_MODE_FIFO_KHR,
             };
         }
         return {.lowerPresentMode = intendedPresentMode};

@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -51,9 +52,10 @@ namespace mako::layer {
             enumerationResult == VK_ERROR_LAYER_NOT_PRESENT;
     }
 
-    /// Owns only Gamescope's X11-window -> Wayland-buffer association. Vulkan
-    /// still owns acquisition, presentation, synchronization and retirement.
-    /// No Gamescope WSI layer or frame-limiter/timing/HDR interface is loaded.
+    /// Owns Gamescope's X11-window -> Wayland-buffer association and protocol
+    /// timing. Vulkan owns acquisition, synchronization and retirement.
+    /// Ordered private outputs use bounded desired presentation times. No
+    /// Gamescope WSI layer, frame-limiter control or HDR interface is loaded.
     class GamescopeScalingSurface {
     public:
         GamescopeScalingSurface();
@@ -82,14 +84,17 @@ namespace mako::layer {
         [[nodiscard]] bool createSwapchain(VkSurfaceKHR surface,
             VkSwapchainKHR swapchain, const VkSwapchainCreateInfoKHR& info,
             uint32_t imageCount, std::string_view engineName,
-            std::optional<VkPresentModeKHR> compositorPresentMode);
+            std::optional<VkPresentModeKHR> compositorPresentMode,
+            uint32_t refreshHz = 0);
         void destroySwapchain(VkSurfaceKHR surface, VkSwapchainKHR swapchain);
 
-        /// Bind the matching protocol object at presentation. Gamescope WSI
-        /// reasserts this association every frame because Xwayland and Steam
-        /// UI transitions can publish their own window-content mapping.
+        /// Bind the matching protocol object before every lower presentation,
+        /// including each generated output. Association recovers Xwayland and
+        /// Steam UI mapping changes; the protocol mode covers one commit only.
         [[nodiscard]] bool preparePresent(
-            VkSurfaceKHR surface, VkSwapchainKHR swapchain);
+            VkSurfaceKHR surface, VkSwapchainKHR swapchain,
+            double outputFps = 0.0, uint32_t refreshHz = 0,
+            size_t outputBatchSize = 1);
         [[nodiscard]] bool owns(VkSurfaceKHR surface) const;
 
         /// Preserve the application's X11 extent contract at both public

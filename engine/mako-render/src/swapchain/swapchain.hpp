@@ -36,10 +36,15 @@
 
 namespace mako::layer {
 
+    class GamescopeScalingSurface;
+
     /// swapchain info struct
     struct SwapchainInfo {
         std::vector<VkImage> images;
         VkSurfaceKHR surface;
+        // Borrowed from the instance owner, whose surface and connection
+        // outlive Vulkan swapchain retirement. Null for ordinary/WSI surfaces.
+        GamescopeScalingSurface* gamescopeScalingSurface{nullptr};
         VkFormat format;
         VkColorSpaceKHR colorSpace;
         // Preserve the application's requested minimum separately from the
@@ -433,6 +438,9 @@ namespace mako::layer {
         GamescopePresentationFeedback gamescopePresentationFeedback;
         FixedRefreshBudget fixedRefreshBudget;
         RealFramePacer realFramePacer;
+        // Actual scheduled batch, including the real image; never the user's
+        // unproven maximum multiplier. Reset before native/history fallbacks.
+        size_t bridgeOutputBatchSize{1};
         SmoothCadenceBaseCap smoothCadenceBaseCap;
         SmoothCadencePacerHandoff smoothCadencePacerHandoff;
         // A null-old replacement loses the driver's explicit WSI lineage.

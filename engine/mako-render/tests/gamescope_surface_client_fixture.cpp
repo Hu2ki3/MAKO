@@ -36,6 +36,9 @@ namespace {
     int associations{};
     int feedbacks{};
     int presentModes{};
+    int presentTimes{};
+    uint32_t presentId{};
+    uint64_t presentTime{};
     uint32_t presentMode{};
     uint32_t feedbackImageCount{};
     std::string feedbackEngine;
@@ -78,6 +81,9 @@ extern "C" {
     int mako_test_surface_objects() { return static_cast<int>(objects.size()) + queues; }
     int mako_test_surface_associations() { return associations; }
     int mako_test_surface_feedbacks() { return feedbacks; }
+    int mako_test_surface_present_times() { return presentTimes; }
+    uint32_t mako_test_surface_present_id() { return presentId; }
+    uint64_t mako_test_surface_present_time() { return presentTime; }
     int mako_test_surface_present_modes() { return presentModes; }
     uint32_t mako_test_surface_present_mode() { return presentMode; }
     uint32_t mako_test_surface_feedback_image_count() { return feedbackImageCount; }
@@ -146,8 +152,12 @@ extern "C" {
             } else if (opcode == 3) {
                 ++presentModes;
                 presentMode = args[0].u;
+            } else if (opcode == 5) {
+                ++presentTimes;
+                presentId = args[0].u;
+                presentTime = (uint64_t{args[1].u} << 32) | args[2].u;
             } else {
-                std::abort(); // No limiter, timing or HDR requests.
+                std::abort(); // No limiter or HDR control requests.
             }
             return nullptr;
         }

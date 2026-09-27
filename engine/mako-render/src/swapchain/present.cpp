@@ -41,9 +41,10 @@ VkResult Swapchain::present(const vk::Vulkan& vk,
     const DiagnosticsContextScope diagnosticsContext(
         this->diagnosticsState.contextId
     );
+    this->bridgeOutputBatchSize = 1;
     this->applyPendingSpatialScaler(vk);
     // Match the immutable create-time choice. Ordered SDR filters Gamescope's
-    // dynamic MAILBOX override so the lower FIFO swapchain stays ordered. HDR
+    // dynamic MAILBOX override so the private transport stays ordered. HDR
     // preserves it. A feedback transition cannot change the game-owned
     // VkSwapchainKHR's creation contract.
     // Application damage rectangles are expressed in the virtual source
@@ -560,6 +561,7 @@ VkResult Swapchain::present(const vk::Vulkan& vk,
     );
     if (bypassGeneratedFrames)
         return this->presentHistoryOnly(invocation, plan);
+    this->bridgeOutputBatchSize = plan.scheduledGeneratedFrames.size() + 1;
     return this->presentGeneratedFrames(
         invocation, plan, gamescopeHdrTransport
     );
