@@ -35,10 +35,14 @@ def _sha256(content: str) -> str:
 
 class ConfigurationBoundaryTests(unittest.TestCase):
     def setUp(self):
-        self.service = ConfigurationService(
-            logger=_Logger(),
-            development_build=False,
-        )
+        with patch(
+            "py_modules.mako_plugin.base_service.resolve_user_home",
+            return_value=Path("/home/deck"),
+        ):
+            self.service = ConfigurationService(
+                logger=_Logger(),
+                development_build=False,
+            )
         self.service.config_dir = Path("/home/deck/.config/mako-render")
         self.service.config_file_path = self.service.config_dir / "conf.toml"
         self.service.mako_script_path = Path("/home/deck/.local/bin/mako-run")
