@@ -132,10 +132,8 @@ class ProductBrandingTests(unittest.TestCase):
             "Flow Scale, Performance Mode",
             renderer_publisher,
         )
-        self.assertIn(
-            "## MAKO Renderer release assets \\`$version\\`",
-            renderer_publisher,
-        )
+        self.assertNotIn("## MAKO Renderer release assets", renderer_publisher)
+        self.assertNotIn("- SHA-256:", renderer_publisher)
         self.assertNotIn("## MAKO Renderer Linux build", renderer_publisher)
         self.assertNotIn("## Included files", renderer_publisher)
 
