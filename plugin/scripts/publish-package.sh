@@ -276,12 +276,12 @@ printf '%s\n' \
   '## 🎮 In-game considerations' \
   '' \
   '> [!TIP]' \
-  '> **Try the game’s V-Sync setting both on and off.** Neither setting is universally best: the result depends on the game, its FPS cap, VRR, and the compositor. Keep whichever option feels smoother and more responsive for that game.' \
+  '> **Try V-Sync on and off.** The smoother choice depends on the game, FPS cap, VRR, and compositor.' \
   '' \
-  'Every game, renderer, and display setup behaves differently. Compare Fixed Frame Generation, Adaptive Frame Generation, and scaling-only operation one setting at a time. If Frame Generation, Scaling, or Shaders do not work, test Fullscreen, Borderless Fullscreen, and Windowed; none is universally best. For Scaling, also test in-game resolutions and check that Live Status shows Input smaller than Display. Changing display mode can change GPU cost.' \
+  'Compare Fixed, Adaptive, and scaling-only modes one at a time. If a feature does not work, try Fullscreen, Borderless Fullscreen, and Windowed. For Scaling, test in-game resolutions and check that Live Status shows Input smaller than Display.' \
   '' \
-  '- **Adaptive target behaviour:** Adaptive varies the generated-frame count toward an average target. It cannot reduce a native frame rate already above that target, and the result still depends on the selected multiplier plus available GPU and compositor capacity.' \
-  '- **Quality and latency tuning:** Higher multipliers and lower real-frame rates can increase ghosting and input latency. Smooth Cadence may improve motion consistency while reducing responsiveness, so compare the available choices per game.' \
+  '- **Adaptive target:** Adaptive aims for an average frame rate; it cannot lower a game’s native rate or exceed available GPU and compositor capacity.' \
+  '- **Quality and latency:** Higher multipliers and lower real-frame rates can increase ghosting and latency. Smooth Cadence may trade responsiveness for steadier motion.' \
   '' \
   'See the [Configuration guide](https://github.com/eugeniosegala/MAKO/blob/main/plugin/docs/CONFIGURATION.md) and [Troubleshooting guide](https://github.com/eugeniosegala/MAKO/blob/main/plugin/docs/TROUBLESHOOTING.md) for complete behaviour and per-game controls.' \
   '' \
@@ -301,9 +301,6 @@ printf '%s\n' \
   "2. On SteamOS, open Decky Loader's settings and enable **Developer Mode**." \
   '3. Choose **Developer** > **Install Plugin from Zip**, then select the downloaded ZIP.' \
   '4. In MAKO Decky, select **Install MAKO Renderer**. For native Steam/Proton games, add `/home/deck/.local/bin/mako-run %command%` to the game’s Steam launch options.' \
-  '' \
-  '> [!IMPORTANT]' \
-  '> **Preferred clean update:** To prevent Decky retaining an older backend or bundled payload, uninstall **MAKO Decky**, install the newer ZIP, restart your Steam Deck or Steam Machine, then open the plugin and select **Install MAKO Renderer**. This also resolves cases where Decky does not show or reload the plugin after installation.' \
   '' \
   >> "$notes_file"
 
@@ -328,7 +325,7 @@ printf '%s\n' \
   '' \
   '## Known limitation' \
   '' \
-  '- **HDR frame generation and scaling are unavailable in this Decky release:** The engine foundation is included, but the plugin locks HDR exposure off and does not provide a per-game opt-in. In-game HDR controls may be unavailable by design. A later release can unlock the path after activation, presentation, colour, and performance are validated across games.' \
+  '- **HDR frame generation and scaling are unavailable:** MAKO Decky does not expose the engine’s HDR path yet; in-game HDR controls may be unavailable.' \
   '' \
   '## Before you play' \
   '' \
