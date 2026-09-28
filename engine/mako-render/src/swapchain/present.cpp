@@ -109,6 +109,7 @@ VkResult Swapchain::present(const vk::Vulkan& vk,
         {
             .validatedGenerationLimit =
                 schedulerSnapshot.validatedGenerationLimit,
+            .stableCadenceLimit = schedulerSnapshot.stableCadenceLimit,
             .smoothedBaseFps = schedulerSnapshot.smoothedBaseFps,
             .rampEvaluationActive = schedulerSnapshot.rampEvaluationActive,
             .efficiencyProbeGenerationLimit =

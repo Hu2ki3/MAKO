@@ -1001,6 +1001,7 @@ namespace mako::layer {
 
         struct SchedulerState {
             size_t validatedGenerationLimit{0};
+            std::optional<size_t> stableCadenceLimit;
             double smoothedBaseFps{0.0};
             bool rampEvaluationActive{false};
             std::optional<size_t> efficiencyProbeGenerationLimit;
@@ -1035,8 +1036,21 @@ namespace mako::layer {
             }
             this->probeMultiplier.reset();
 
-            const size_t desiredMultiplier =
-                scheduler.validatedGenerationLimit + 1;
+            // Validated capacity can exceed the constant plan currently in
+            // use. A 3x cap applied to an accepted 2x plan would turn 120 FPS
+            // into 40 real + 40 generated FPS and trigger false rescue.
+            const size_t desiredMultiplier = std::min(
+                scheduler.validatedGenerationLimit,
+                scheduler.stableCadenceLimit.value_or(
+                    scheduler.validatedGenerationLimit)) + 1;
+            if (this->activeMultiplier &&
+                    *this->activeMultiplier > desiredMultiplier) {
+                // Do not retain a stricter cap while a lower active cadence
+                // qualifies. Its previous cap would starve the new plan.
+                this->activeMultiplier.reset();
+                this->resetCandidate();
+                this->releaseSince.reset();
+            }
             if (previousProbeMultiplier &&
                     desiredMultiplier == *previousProbeMultiplier) {
                 // The scheduler accepted the tested lower load. Its temporary

@@ -23,6 +23,64 @@ namespace {
         std::exit(1);
     }
 
+    void testSmoothCadenceCapFollowsActivePlan() {
+        const SmoothCadenceBaseCap::TimePoint start{};
+        for (const uint32_t target : {60U, 90U, 120U, 144U}) {
+            for (size_t validated = 3; validated <= 5; ++validated) {
+                for (size_t active = 2; active <= validated; ++active) {
+                    SmoothCadenceBaseCap cap;
+                    const double activeCap = static_cast<double>(target) / active;
+                    SmoothCadenceBaseCap::SchedulerState snapshot{
+                        .validatedGenerationLimit = validated - 1,
+                        .stableCadenceLimit = active - 1,
+                        .smoothedBaseFps = activeCap * 0.97,
+                    };
+                    static_cast<void>(cap.update(start, true, target, snapshot));
+                    auto result = cap.update(start + 1s, true, target, snapshot);
+                    if (active == 2) {
+                        // FF7 accepted 3x capacity but retained a 2x plan.
+                        // Its ordinary half-target cap must remain authoritative.
+                        expect(!result.framesPerSecond && !result.changed,
+                            "validated higher capacity throttled an active 2x plan");
+                    } else {
+                        expect(result.framesPerSecond && result.changed &&
+                                result.multiplier == active &&
+                                std::abs(*result.framesPerSecond - activeCap) < 0.001,
+                            "integer cap did not match the active constant plan");
+                    }
+                }
+            }
+        }
+
+        SmoothCadenceBaseCap cap;
+        SmoothCadenceBaseCap::SchedulerState snapshot{
+            .validatedGenerationLimit = 4,
+            .smoothedBaseFps = 24.0,
+        };
+        static_cast<void>(cap.update(start, true, 120, snapshot));
+        expect(cap.update(start + 1s, true, 120, snapshot).framesPerSecond == 24.0,
+            "validated 5x workload could not qualify without a constant plan");
+        snapshot.stableCadenceLimit = 2;
+        snapshot.smoothedBaseFps = 39.0;
+        auto result = cap.update(start + 2s, true, 120, snapshot);
+        expect(!result.framesPerSecond && result.changed,
+            "newly accepted 3x plan retained the old 5x cap during qualification");
+        result = cap.update(start + 3s, true, 120, snapshot);
+        expect(result.framesPerSecond == 40.0 && result.multiplier == 3,
+            "active 3x plan could not qualify after releasing a stricter cap");
+        snapshot.stableCadenceLimit = 1;
+        result = cap.update(start + 3010ms, true, 120, snapshot);
+        expect(!result.framesPerSecond && result.changed,
+            "newly accepted 2x plan did not immediately release the 3x cap");
+
+        // A lower-load measurement must still override the retained plan.
+        snapshot.stableCadenceLimit = 2;
+        snapshot.efficiencyProbeGenerationLimit = 1;
+        result = cap.update(start + 4s, true, 120, snapshot);
+        expect(result.framesPerSecond == 60.0 && result.multiplier == 2,
+            "active cadence prevented a lower-load efficiency probe");
+    }
+
     void testOrderedAcquireUsesExplicitFailureOnly() {
         OrderedAcquireRecovery recovery;
         const auto now = OrderedAcquireRecovery::TimePoint{};
@@ -159,6 +217,7 @@ void testOrderedPresentationTimeline() {
 }
 
 int main() {
+    testSmoothCadenceCapFollowsActivePlan();
     testOrderedPresentationTimeline();
     testOrderedAcquireUsesExplicitFailureOnly();
     testOrderedAcquireBackoffAndProbeAreFinite();
