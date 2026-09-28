@@ -4,8 +4,6 @@
 
 ### Release codename: inferno
 
-<!-- Unreleased: complete release validation before publication. -->
-
 Shader processing is the defining addition in MAKO Renderer 4.0 and the project's largest expansion beyond Frame Generation and Spatial Scaling. MAKO now ships its own maintained and modified fork of vkBasalt for 64-bit and 32-bit games across native Linux and Flatpak. The fork provides controlled live effect updates and a managed layer chain while retaining standard vkBasalt configuration for advanced chains and additional ReShade-compatible effects. Frame Generation, Scaling, and programmable post-processing are now delivered as one managed graphics stack.
 
 - **MAKO's vkBasalt fork:** Native and Flatpak packages include pinned builds of MAKO's fork and do not depend on a system-wide vkBasalt installation. It monitors managed configuration changes, replaces effect graphs without retaining previous graphs in GPU memory, and supports live updates for MAKO's controls. `mako-launch` creates an isolated layer chain with MAKO Renderer before vkBasalt.
@@ -18,5 +16,6 @@ Shader processing is the defining addition in MAKO Renderer 4.0 and the project'
 - **Recovery behavior:** Steam-menu focus changes and live policy changes reset temporal history. MAKO attempts presentation recovery when a generated-image acquire times out, its configured cumulative budget is exhausted, or the batch reaches that cumulative acquire deadline. Low frame rates, expensive scaling or shader work, scene changes, and slow successful lower presents do not trigger recovery.
 - **Adaptive scheduling:** Promotions from 2x through 5x compare adjacent measured workloads, including scaling and post-processing cost. A level already supplying at least 98% of the target does not probe a higher multiplier. If a higher level is not sustainable, MAKO retains the lower measured level instead of repeatedly testing the failed level. Fixed keeps its selected multiplier.
 - **Smoother Scaling with Frame Generation:** Using both features together now causes fewer presentation stalls in affected games. MAKO adjusts to the display's refresh rate automatically, so there is no new setting to configure. Actual FPS still depends on the game and graphics workload.
+- **Known Fractional pacing case:** A synthetic requested-VRR test at 120 Hz still intermittently shows uneven frame completion when Fractional Adaptive targets 90 FPS from a 60 FPS source, despite an average near 90 FPS. Physical VRR and game impact have not been established; MAKO Gym continues to run and report this case separately.
 - **Resolution changes:** When a live resolution change remains within the existing memory limit, MAKO can retry resource allocation once after retired resources have been released. The desktop GUI suggests testing display modes and in-game resolution when Scaling has no headroom.
 - **Arch Linux package:** The `mako-renderer-bin` recipe installs the verified release archive system-wide, preserves payload hashes, and does not modify user-local MAKO installations.
