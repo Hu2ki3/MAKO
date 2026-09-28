@@ -26,7 +26,7 @@
 | Component | Recommended for | Releases |
 | --- | --- | --- |
 | **MAKO Decky** | Steam Deck, Steam Machine, and Decky Loader users (bundles MAKO Renderer) | <a href="https://github.com/eugeniosegala/MAKO/releases/latest" target="_blank" rel="noopener noreferrer">Latest MAKO Decky release (ZIP under Assets)</a> |
-| **MAKO Renderer** | Direct Vulkan-layer installation without Decky | <a href="https://github.com/eugeniosegala/MAKO/releases/tag/render-v3.3.0" target="_blank" rel="noopener noreferrer">Latest MAKO Renderer release</a> |
+| **MAKO Renderer** | Direct Vulkan-layer installation without Decky | <a href="https://github.com/eugeniosegala/MAKO/releases/tag/render-v4.0.0" target="_blank" rel="noopener noreferrer">Latest MAKO Renderer release (Linux archive under Assets)</a> |
 
 ## Community
 
@@ -125,7 +125,7 @@ Valid profiles and Steam launch options are retained. If the saved Renderer conf
 Decky is optional. Desktop Linux users can install MAKO Renderer directly:
 
 1. To use frame generation or LS1 scaling, purchase and install the **default public version** of <a href="https://store.steampowered.com/app/993090/Lossless_Scaling/" target="_blank" rel="noopener noreferrer">Lossless Scaling</a> through Steam. MAKO can use beta branches, but they are not validated; the default public branch is recommended. The open MAKO Scaler does not use `Lossless.dll`.
-2. Download and extract `MAKO-Renderer-v<version>-linux.tar.xz` from the <a href="https://github.com/eugeniosegala/MAKO/releases/tag/render-v3.3.0" target="_blank" rel="noopener noreferrer">latest MAKO Renderer release</a>, then run **Install MAKO Renderer**. The installer opens **MAKO Renderer Configuration** and shows the launch option.
+2. Download and extract `MAKO-Renderer-v<version>-linux.tar.xz` from the <a href="https://github.com/eugeniosegala/MAKO/releases/tag/render-v4.0.0" target="_blank" rel="noopener noreferrer">latest MAKO Renderer release</a>, then run **Install MAKO Renderer**. The installer opens **MAKO Renderer Configuration** and shows the launch option.
 3. Create or select a profile and choose Frame Generation, scaling, and/or shader effects. Add the executable manually under **Profile Matching > Matched Processes**, or start the game normally and use **Detect Running Game…**, then close it. Detection only identifies the executable; it does not activate MAKO in the running game.
 4. Every standalone native Steam or Proton game must start through MAKO. Add the option shown by the configuration window under **Steam Properties > General > Launch Options**, then use Steam's **Play** button normally:
 

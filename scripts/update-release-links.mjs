@@ -40,7 +40,7 @@ const componentDetails = {
     expectedLinks: {
       "README.md": 1,
       "plugin/README.md": 1,
-      "engine/README.md": 2,
+      "engine/README.md": 1,
     },
   },
 }[component];
