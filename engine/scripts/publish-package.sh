@@ -254,8 +254,6 @@ The package installs MAKO Renderer under \`/usr\`, preserves profiles under \`~/
 
 After installation, open **MAKO Renderer Configuration** from the application menu or run \`mako-ui\`, create a game profile, and use \`/usr/bin/mako-launch %command%\` as that native Steam or Proton game's launch option. Installing the package alone does not activate MAKO globally.
 
-- SHA-256: \`$arch_checksum\`
-
 ### Flatpak runtime extensions
 
 Download and extract \`$(basename "$flatpak_archive")\`. It contains one self-contained MAKO extension for each supported Flatpak runtime. Install the extension matching the application runtime, for example:
@@ -263,8 +261,6 @@ Download and extract \`$(basename "$flatpak_archive")\`. It contains one self-co
 \`\`\`bash
 flatpak install --user org.freedesktop.Platform.VulkanLayer.makorender-24.08.flatpak
 \`\`\`
-
-- SHA-256: \`$flatpak_checksum\`
 
 ## Updating an existing MAKO Renderer installation
 
@@ -285,13 +281,6 @@ Keep the previous archives until the new version has been tested with your games
 - If you use Frame Generation or LS1 scaling, confirm the detected \`Lossless.dll\` path before launching. Leaving it blank permits normal discovery. MAKO Scaler does not need it.
 - Do not combine MAKO with another frame-generation or scaling Vulkan wrapper for the same game.
 
-## MAKO Renderer release assets \`$version\`
-
-- Includes checksum-verified host archive \`$(basename "$archive")\` (SHA-256: \`$checksum\`).
-- Includes checksum-verified Arch Linux package \`$(basename "$arch_package")\` (SHA-256: \`$arch_checksum\`).
-- Includes checksum-verified Flatpak runtime archive \`$(basename "$flatpak_archive")\` (SHA-256: \`$flatpak_checksum\`).
-- The host archive contains the 64-bit and 32-bit Vulkan layers, CLI, Qt configuration UI, standalone \`mako-launch\` launcher, and desktop integration.
-- Corresponding source: [commit \`$source_commit\`](https://github.com/$release_repository/tree/$source_commit), also available from the release tag's source archives.
 EOF
 
 if [[ "$tag_exists" == false ]]; then

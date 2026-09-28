@@ -2,7 +2,7 @@
 
 <img src="https://raw.githubusercontent.com/eugeniosegala/MAKO/refs/heads/main/assets/inferno.png" alt="Inferno release artwork" width="100%">
 
-### Release codename: inferno
+### Release codename: Inferno
 
 Shaders are the defining feature of MAKO Decky 4.0. MAKO's maintained and modified vkBasalt fork is now installed and managed with MAKO Renderer for 64-bit and 32-bit games, including prepared Flatpak applications. It provides live per-game controls and a curated effect library while preserving standard vkBasalt configuration for custom chains and additional ReShade-compatible effects. This expands MAKO from Frame Generation and Scaling into a managed image-processing platform without requiring a separate vkBasalt installation.
 
