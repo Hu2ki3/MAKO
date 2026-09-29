@@ -11,8 +11,11 @@
 #include <vector>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <X11/Xlib.h>
 #include <xcb/xcb.h>
 
+struct wl_display;
+struct wl_event_queue;
 struct wl_message;
 struct wl_interface {
     const char* name;
@@ -105,27 +108,32 @@ extern "C" {
         }
     }
 
-    wl_proxy* wl_display_connect(const char*) {
+    wl_display* wl_display_connect(const char*) {
         if (mode == 1)
             return nullptr;
         if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) != 0)
             std::abort();
-        return make("wl_display");
+        return reinterpret_cast<wl_display*>(make("wl_display"));
     }
-    void wl_display_disconnect(wl_proxy* proxy) {
-        drop(proxy);
+    void wl_display_disconnect(wl_display* display) {
+        drop(reinterpret_cast<wl_proxy*>(display));
         close(sockets[0]);
         close(sockets[1]);
     }
-    int wl_display_get_fd(void*) { return sockets[0]; }
-    int wl_display_flush(void*) { return 0; }
-    int wl_display_get_error(void*) { return mode == 5 ? 32 : 0; }
-    void* wl_display_create_queue(void*) { ++queues; return &queues; }
-    void wl_event_queue_destroy(void*) { --queues; }
-    int wl_display_prepare_read_queue(void*, void*) { ++reads; return 0; }
-    int wl_display_read_events(void*) { return 0; }
-    void wl_display_cancel_read(void*) {}
-    void wl_proxy_set_queue(wl_proxy*, void*) {}
+    // Match the public opaque pointer signatures even though the fixture uses
+    // proxies/counters as storage. dlopen callers retain the real API types.
+    int wl_display_get_fd(wl_display*) { return sockets[0]; }
+    int wl_display_flush(wl_display*) { return 0; }
+    int wl_display_get_error(wl_display*) { return mode == 5 ? 32 : 0; }
+    wl_event_queue* wl_display_create_queue(wl_display*) {
+        ++queues;
+        return reinterpret_cast<wl_event_queue*>(&queues);
+    }
+    void wl_event_queue_destroy(wl_event_queue*) { --queues; }
+    int wl_display_prepare_read_queue(wl_display*, wl_event_queue*) { ++reads; return 0; }
+    int wl_display_read_events(wl_display*) { return 0; }
+    void wl_display_cancel_read(wl_display*) {}
+    void wl_proxy_set_queue(wl_proxy*, wl_event_queue*) {}
     void wl_proxy_destroy(wl_proxy* proxy) { drop(proxy); }
     int wl_proxy_add_listener(wl_proxy* proxy, void (**listener)(void), void* data) {
         if (mode == 8 && proxy->kind == "gamescope_swapchain")
@@ -170,7 +178,7 @@ extern "C" {
             created->pending = true;
         return created;
     }
-    int wl_display_dispatch_queue_pending(void*, void*) {
+    int wl_display_dispatch_queue_pending(wl_display*, wl_event_queue*) {
         if (mode == 3)
             return 0; // A silent peer must hit the bounded discovery deadline.
         const auto pending = objects;
@@ -236,5 +244,5 @@ extern "C" {
         return reply;
     }
     void* xcb_get_property_value(const xcb_get_property_reply_t* reply) { return const_cast<xcb_get_property_reply_t*>(reply) + 1; }
-    xcb_connection_t* XGetXCBConnection(void*) { return reinterpret_cast<xcb_connection_t*>(1); }
+    xcb_connection_t* XGetXCBConnection(Display*) { return reinterpret_cast<xcb_connection_t*>(1); }
 }

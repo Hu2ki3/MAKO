@@ -20,9 +20,101 @@ namespace {
         std::exit(1);
     }
 
+    void testGamescopeLaunchIdentity() {
+        constexpr std::string_view shortcutGameId = "12884902416314531840";
+        constexpr uint32_t shortcutAppId = 3000000123u;
+        expect(gamescopeSteamGameId("1462040") == 1462040 &&
+                gamescopeSteamGameId(shortcutGameId) == shortcutAppId &&
+                gamescopeSteamGameId("18446744069448138752") == 0xffffffffu,
+            "Steam app and unsigned 64-bit shortcut IDs must resolve without truncation");
+        for (const auto invalid : {
+                "", "0", "769", "-1", "+42", " 42", "42 ", "42x",
+                "18446744073709551616", "18446744073709551615",
+                "33554432", "4294967296", "180422180864", "3302863405056",
+                "12884902416314531841", "12884902416297754624",
+                "12884902416331309056"}) {
+            expect(!gamescopeSteamGameId(invalid),
+                "malformed, overflowing, reserved, mod or P2P IDs must stay unknown");
+        }
+
+        struct Case {
+            GamescopeApplicationIdentityHints hints;
+            std::optional<uint32_t> expected;
+            std::string_view message;
+        };
+        const Case cases[]{
+            {{"1462040", "1462040", "1462040", ""}, 1462040,
+                "ordinary Steam launch lost its app identity"},
+            {{"42", "77", "99", ""}, 42,
+                "ordinary SteamAppId precedence changed"},
+            {{"", "1462040", "", ""}, 1462040,
+                "compatibility app fallback was lost"},
+            {{"0", "1462040", "", ""}, 1462040,
+                "zero SteamAppId masked a valid compatibility identity"},
+            {{"invalid", "1462040", "", ""}, 1462040,
+                "malformed SteamAppId masked a valid compatibility identity"},
+            {{"3000000123", "0", shortcutGameId, ""}, shortcutAppId,
+                "direct non-Steam app identity was lost"},
+            {{"0", "0", shortcutGameId, ""}, shortcutAppId,
+                "direct non-Steam shortcut fallback was lost"},
+            {{"0", "prefix-hash", "0", shortcutGameId}, shortcutAppId,
+                "Heroic UMU-0 launch did not retain Steam's shortcut identity"},
+            {{"292030", "prefix-hash", "292030", shortcutGameId}, shortcutAppId,
+                "UMU store identity displaced Steam's actual launch identity"},
+            {{"0", "prefix-hash", "0", "1462040"}, 1462040,
+                "UMU preserved Steam app identity was lost"},
+            {{"1462040", "0", "", "invalid"}, 1462040,
+                "malformed UMU hint displaced a valid normal Steam launch"},
+            {{"", "", "1462040", ""}, 1462040,
+                "plain SteamGameId fallback was lost"},
+            {{"", "", "", ""}, std::nullopt,
+                "desktop launch fabricated a Steam identity"},
+            {{"0", "prefix-hash", "0", ""}, std::nullopt,
+                "UMU outside Steam fabricated a shortcut identity"},
+            {{"769", "0", "42x", "18446744073709551616"}, std::nullopt,
+                "invalid launch hints fabricated a Steam identity"},
+        };
+        for (const auto& test : cases) {
+            const auto id = resolveGamescopeApplicationId(test.hints);
+            expect(id == test.expected, test.message);
+            expect(!classifyGamescopeFocus(id, 77, 77) &&
+                    !classifyGamescopeFocus(id, 769, 77),
+                "another game's focus became menu evidence for this launch");
+            if (!id) {
+                expect(!classifyGamescopeFocus(id, 769, 769),
+                    "Steam UI without a known launch identity suspended generation");
+                continue;
+            }
+
+            // Exercise resolution through the existing debounce and return
+            // tracker, the shared evidence source for every generation mode.
+            GamescopeFocusTracker tracker;
+            const auto start = GamescopeFocusFeedback::Clock::time_point{};
+            static_cast<void>(tracker.observe(start, classifyGamescopeFocus(id, id, id)));
+            expect(tracker.observe(start + 250ms,
+                    classifyGamescopeFocus(id, id, id)).gameFocused == true,
+                "resolved launch did not establish gameplay focus");
+            static_cast<void>(tracker.observe(start + 500ms,
+                classifyGamescopeFocus(id, 769, id)));
+            expect(tracker.observe(start + 750ms,
+                    classifyGamescopeFocus(id, 769, id)).menuOpen(start + 750ms),
+                "resolved launch did not suspend on confirmed Steam menu focus");
+            expect(tracker.observe(start + 1s,
+                    classifyGamescopeFocus(id, 769, 769)).menuOpen(start + 1s),
+                "full Steam UI lost an established menu suspension");
+            static_cast<void>(tracker.observe(start + 1250ms,
+                classifyGamescopeFocus(id, id, id)));
+            const auto returned = tracker.observe(start + 1500ms,
+                classifyGamescopeFocus(id, id, id));
+            expect(returned.gameFocused == true && returned.returnSequence == 1,
+                "resolved launch failed to resume exactly once after the menu");
+        }
+    }
+
 }
 
 int main() {
+    testGamescopeLaunchIdentity();
     const auto start = StableBooleanFeedback::TimePoint{};
 
     expect(gamescopeApplicationId("1462040") == 1462040 &&

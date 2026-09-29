@@ -35,6 +35,45 @@ namespace mako::layer {
         return id;
     }
 
+    /// SteamGameId is either a plain Steam app or a packed shortcut CGameID.
+    /// A shortcut has type 2 and no app in its low word; its high word is the
+    /// Gamescope app identity. Reject other types rather than truncating them.
+    [[nodiscard]] inline std::optional<uint32_t> gamescopeSteamGameId(
+            const std::string_view value) {
+        if (value.empty())
+            return std::nullopt;
+        uint64_t id{};
+        const auto result = std::from_chars(value.data(), value.data() + value.size(), id);
+        if (result.ec != std::errc{} || result.ptr != value.data() + value.size())
+            return std::nullopt;
+        if (id <= 0x00ffffff)
+            return gamescopeApplicationId(value);
+        const auto shortcut = static_cast<uint32_t>(id >> 32);
+        if ((id & 0xffffffff) != 0x02000000 || (shortcut & 0x80000000) == 0)
+            return std::nullopt;
+        return shortcut;
+    }
+
+    struct GamescopeApplicationIdentityHints {
+        std::string_view steamAppId;
+        std::string_view compatAppId;
+        std::string_view steamGameId;
+        std::string_view umuSteamGameId;
+    };
+
+    /// Resolve once at process startup. UMU preserves the Steam launch identity
+    /// before replacing the normal IDs with its store ID or prefix hash.
+    [[nodiscard]] inline std::optional<uint32_t> resolveGamescopeApplicationId(
+            const GamescopeApplicationIdentityHints& hints) {
+        if (const auto id = gamescopeSteamGameId(hints.umuSteamGameId))
+            return id;
+        if (const auto id = gamescopeApplicationId(hints.steamAppId))
+            return id;
+        if (const auto id = gamescopeApplicationId(hints.compatAppId))
+            return id;
+        return gamescopeSteamGameId(hints.steamGameId);
+    }
+
     /// Gamescope identifies Steam's UI as app 769. Missing/empty properties,
     /// another game, and unidentifiable launchers are NOT menu evidence.
     [[nodiscard]] inline std::optional<bool> classifyGamescopeFocus(

@@ -69,10 +69,16 @@ struct GamescopeHdrFeedbackReader::Impl {
     GamescopeFocusTracker focusTracker;
     std::optional<uint32_t> focusGamescopePid;
     const std::optional<uint32_t> applicationId = [] {
-        const char* value = std::getenv("SteamAppId");
-        if (!value || !*value)
-            value = std::getenv("STEAM_COMPAT_APP_ID");
-        return value ? gamescopeApplicationId(value) : std::nullopt;
+        const auto environment = [](const char* name) -> std::string_view {
+            const char* value = std::getenv(name);
+            return value ? value : "";
+        };
+        return resolveGamescopeApplicationId({
+            .steamAppId = environment("SteamAppId"),
+            .compatAppId = environment("STEAM_COMPAT_APP_ID"),
+            .steamGameId = environment("SteamGameId"),
+            .umuSteamGameId = environment("UMU_STEAM_GAME_ID"),
+        });
     }();
 
 #if defined(__linux__)
