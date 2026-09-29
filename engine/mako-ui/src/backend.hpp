@@ -27,6 +27,10 @@
 
 namespace mako::ui {
 
+    /// Resolve the launcher installed with this UI before considering PATH.
+    [[nodiscard]] QString launcherCommandForUiDirectory(
+        const QString& directory);
+
     /// Class tying ui and configuration together
     class Backend : public QObject {
         Q_OBJECT

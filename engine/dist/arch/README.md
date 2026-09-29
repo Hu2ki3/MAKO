@@ -51,6 +51,8 @@ Create or select a game profile and configure Frame Generation, Scaling, and/or 
 
 Use the absolute `/usr/bin` path so a separate `~/.local/bin/mako-launch` cannot shadow the pacman-owned launcher. Flatpak games additionally require the matching MAKO Flatpak runtime extension and application preparation described in the [Flatpak guide](../../docs/FLATPAK-GUIDE.md).
 
+The configuration UI generates the launch option using the `mako-launch` installed beside `mako-ui`, so the pacman package displays `/usr/bin/mako-launch` even when a user-local copy also exists.
+
 ## Build from the tracked recipe
 
 To reproduce the package from the official archive instead, build and install from this directory:

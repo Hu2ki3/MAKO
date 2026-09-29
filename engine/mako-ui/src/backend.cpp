@@ -4,6 +4,8 @@
 #include <QStringList>
 #include <QString>
 #include <QFile>
+#include <QFileInfo>
+#include <QDir>
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDesktopServices>
@@ -11,6 +13,7 @@
 #include <QJsonDocument>
 #include <QJsonValue>
 #include <QSaveFile>
+#include <QStandardPaths>
 #include <QUrl>
 
 #include "backend.hpp"
@@ -54,6 +57,23 @@ QString shellQuote(const QString& value) {
     return QStringLiteral("'") + quoted + QStringLiteral("'");
 }
 
+}
+
+QString ui::launcherCommandForUiDirectory(const QString& directory) {
+    const QString sibling = QDir(directory).absoluteFilePath(
+        QStringLiteral("mako-launch")
+    );
+    const QFileInfo siblingInfo(sibling);
+    if (siblingInfo.isFile() && siblingInfo.isExecutable())
+        return shellQuote(sibling);
+
+    const QString onPath = QStandardPaths::findExecutable(
+        QStringLiteral("mako-launch")
+    );
+    if (!onPath.isEmpty())
+        return shellQuote(onPath);
+
+    return QStringLiteral("~/.local/bin/mako-launch");
 }
 
 Backend::Backend(std::filesystem::path procRoot) : m_proc_root(std::move(procRoot)) {
@@ -328,8 +348,11 @@ std::filesystem::path Backend::vkBasaltConfigPath(
 }
 
 QString Backend::getLaunchOption() const {
+    const QString launcher = launcherCommandForUiDirectory(
+        QCoreApplication::applicationDirPath()
+    );
     if (!isValidProfileIndex())
-        return QStringLiteral("~/.local/bin/mako-launch %command%");
+        return launcher + QStringLiteral(" %command%");
     const auto index = static_cast<size_t>(this->m_profile_index);
     QStringList environment;
     if (this->m_vkbasalt_profiles.at(index).enabled) {
@@ -340,7 +363,7 @@ QString Backend::getLaunchOption() const {
     environment.append(QStringLiteral("MAKO_PROFILE=") + shellQuote(
         QString::fromStdString(this->m_profiles.at(index).name)
     ));
-    environment.append(QStringLiteral("~/.local/bin/mako-launch %command%"));
+    environment.append(launcher + QStringLiteral(" %command%"));
     return environment.join(' ');
 }
 

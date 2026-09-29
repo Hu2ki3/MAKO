@@ -148,6 +148,8 @@ Saving a profile does not activate MAKO. Native Steam and Proton games must star
 ~/.local/bin/mako-launch %command%
 ```
 
+This example is for the user-local archive. The Qt UI generates the path for its installed launcher; the Arch package uses `/usr/bin/mako-launch %command%`.
+
 For a direct desktop command, replace `%command%` with the executable and arguments. Flatpak applications require the matching runtime extension and [Flatpak preparation](FLATPAK-GUIDE.md); a host `mako-launch` prefix does not configure the sandbox.
 
 Select another file or profile explicitly with:

@@ -48,6 +48,49 @@ void require_property(const char* name, const char* type_name,
         "writable Qt backend property has no notification signal");
 }
 
+void test_installed_launcher_selection() {
+    QTemporaryDir directory;
+    require(directory.isValid(), "temporary launcher fixture directory failed");
+    const QString packageBin = directory.filePath("arch package/bin");
+    const QString pathBin = directory.filePath("other/bin");
+    require(QDir().mkpath(packageBin) && QDir().mkpath(pathBin),
+        "cannot create launcher fixture directories");
+    const auto createLauncher = [](const QString& path) {
+        QFile file(path);
+        require(file.open(QIODevice::WriteOnly), "cannot create launcher fixture");
+        require(file.write("#!/bin/sh\nexit 0\n") > 0,
+            "cannot write launcher fixture");
+        file.close();
+        require(file.setPermissions(QFileDevice::ReadOwner |
+                QFileDevice::WriteOwner | QFileDevice::ExeOwner),
+            "cannot mark launcher fixture executable");
+    };
+    const QString packagedLauncher = packageBin + "/mako-launch";
+    const QString pathLauncher = pathBin + "/mako-launch";
+    createLauncher(packagedLauncher);
+    createLauncher(pathLauncher);
+    const QByteArray previousPath = qgetenv("PATH");
+    qputenv("PATH", pathBin.toUtf8());
+    require(mako::ui::launcherCommandForUiDirectory(packageBin) ==
+            "'" + packagedLauncher + "'",
+        "the UI did not select its packaged launcher before PATH");
+    require(mako::ui::launcherCommandForUiDirectory(directory.path()) ==
+            "'" + pathLauncher + "'",
+        "the UI did not resolve a launcher on PATH when no sibling exists");
+    const QString nonFileBin = directory.filePath("directory launcher/bin");
+    require(QDir().mkpath(nonFileBin + "/mako-launch"),
+        "cannot create non-file launcher fixture");
+    require(mako::ui::launcherCommandForUiDirectory(nonFileBin) ==
+            "'" + pathLauncher + "'",
+        "the UI accepted a directory as its installed launcher");
+    qputenv("PATH", QByteArray{});
+    require(mako::ui::launcherCommandForUiDirectory(directory.path()) ==
+            QStringLiteral("~/.local/bin/mako-launch"),
+        "the UI lost the user-local fallback when no launcher exists");
+    if (previousPath.isNull()) qunsetenv("PATH");
+    else qputenv("PATH", previousPath);
+}
+
 void test_scaling_properties() {
     require_property("running_games", "QVariantList", false, false);
     require_property("scanning_games", "bool", false, false);
@@ -476,7 +519,11 @@ void test_save_lifetime() {
                     QStringLiteral("ENABLE_VKBASALT=1")) &&
                 backend.getLaunchOption().contains(
                     QStringLiteral("MAKO_PROFILE='") + selectedProfile +
-                    QStringLiteral("'")),
+                    QStringLiteral("'")) &&
+                backend.getLaunchOption().contains(
+                    mako::ui::launcherCommandForUiDirectory(
+                        QCoreApplication::applicationDirPath()) +
+                    QStringLiteral(" %command%")),
             "UI did not produce the profile-specific shader launch option");
         QFile sidecar(directory.filePath(
             "profile-wrapper-settings.json"
@@ -672,6 +719,7 @@ void test_decky_shader_profile_round_trip_and_owned_deletion() {
 int main(int argc, char* argv[]) {
     const QCoreApplication application(argc, argv);
     try {
+        test_installed_launcher_selection();
         test_scaling_properties();
         test_multiplier_limits();
         test_fractional_adaptive_preset();
