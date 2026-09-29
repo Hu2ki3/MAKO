@@ -938,6 +938,69 @@ namespace mako::layer {
         using Clock = std::chrono::steady_clock;
         using TimePoint = Clock::time_point;
 
+        struct OutputBatch {
+            TimePoint first;
+            Clock::duration interval;
+            size_t count;
+
+            [[nodiscard]] TimePoint at(const size_t index) const {
+                return first + interval * static_cast<int64_t>(index);
+            }
+        };
+
+        /// Spend only the existing source-cap interval. Keep a target-output
+        /// clock across changing batch counts: spacing each batch separately
+        /// would produce 12.5/25 ms gaps for a 40 -> 60 FPS source/target pair.
+        /// The final output may precede the source deadline; the caller still
+        /// retains that deadline before returning control to the application.
+        [[nodiscard]] std::optional<OutputBatch> scheduleOutputs(
+                const TimePoint readyAt, const TimePoint realFrameAt, const double outputFps,
+                const size_t count, const bool targetClockActive) {
+            if (!OrderedPresentTimeline::validRate(outputFps) ||
+                    this->activeFramesPerSecond <= 0.0 || count == 0 ||
+                    count > GeneratedFramePlan::capacity + 1 ||
+                    (count == 1 && !targetClockActive)) {
+                // A zero-generation turn belongs on the output clock only
+                // when it is part of a running Fractional ledger. Startup,
+                // native preference and native probes keep the source cap.
+                this->resetOutputs();
+                return std::nullopt;
+            }
+            const auto period = [](const double fps) {
+                return std::chrono::duration_cast<Clock::duration>(
+                    std::chrono::duration<double>(1.0 / fps));
+            };
+            const auto interval = period(outputFps);
+            const auto sourceInterval = period(this->activeFramesPerSecond);
+            const auto span = interval * static_cast<int64_t>(count - 1);
+            if (span >= sourceInterval) {
+                this->resetOutputs();
+                return std::nullopt;
+            }
+            const auto latestFirst = realFrameAt - span;
+            auto first = latestFirst;
+            if (this->outputFramesPerSecond == outputFps && this->lastOutputAt) {
+                const auto next = *this->lastOutputAt + interval;
+                if (next > realFrameAt - sourceInterval)
+                    first = std::min(next, latestFirst);
+            }
+            // Never borrow time from the next real frame or compress an
+            // overdue output batch into catch-up submissions. A late source
+            // or slow preparation retains the ordinary source-cap deadline.
+            if (first < readyAt || (this->lastOutputAt && first <= *this->lastOutputAt)) {
+                this->resetOutputs();
+                return std::nullopt;
+            }
+            this->outputFramesPerSecond = outputFps;
+            this->lastOutputAt = first + span;
+            return OutputBatch{first, interval, count};
+        }
+
+        void resetOutputs() {
+            this->lastOutputAt.reset();
+            this->outputFramesPerSecond = 0.0;
+        }
+
         [[nodiscard]] TimePoint schedule(
                 const TimePoint now, const double framesPerSecond) {
             if (!std::isfinite(framesPerSecond) || framesPerSecond <= 0.0) {
@@ -947,6 +1010,7 @@ namespace mako::layer {
 
             if (this->activeFramesPerSecond != framesPerSecond) {
                 this->nextFrameAt.reset();
+                this->resetOutputs();
                 this->activeFramesPerSecond = framesPerSecond;
             }
 
@@ -973,11 +1037,14 @@ namespace mako::layer {
         void reset() {
             this->nextFrameAt.reset();
             this->activeFramesPerSecond = 0.0;
+            this->resetOutputs();
         }
 
     private:
         double activeFramesPerSecond{0.0};
         std::optional<TimePoint> nextFrameAt;
+        double outputFramesPerSecond{0.0};
+        std::optional<TimePoint> lastOutputAt;
     };
 
     /// When Steady Adaptive has already proven that it needs at least 3x, a

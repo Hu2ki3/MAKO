@@ -446,6 +446,10 @@ VkResult Swapchain::presentGeneratedFrames(
             .pSwapchains = &invocation.swapchain,
             .pImageIndices = &acquiredImageIndex,
         };
+        if (invocation.pacedOutputs)
+            invocation.waitForOutput(invocation.pacedOutputs->at(i));
+        else if (invocation.originalPresentDeadline)
+            invocation.waitForOutput(*invocation.originalPresentDeadline);
         const auto generatedPresentStarted = startPresentDiagnostic();
         result = this->queuePresentWithRetirementFence(
             invocation.vk, invocation.queue, presentInfo

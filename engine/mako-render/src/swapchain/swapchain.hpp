@@ -255,7 +255,14 @@ namespace mako::layer {
             uint32_t imageIndex;
             std::span<const VkSemaphore> waitSemaphores;
             std::chrono::steady_clock::time_point cadenceStarted;
-            std::chrono::steady_clock::time_point started;
+            mutable std::chrono::steady_clock::time_point started;
+            // Fractional may spend the existing cap wait preparing generated
+            // outputs. Every real-frame/fallback path retains this deadline.
+            std::optional<std::chrono::steady_clock::time_point>
+                originalPresentDeadline;
+            std::optional<RealFramePacer::OutputBatch> pacedOutputs;
+
+            void waitForOutput(std::chrono::steady_clock::time_point deadline) const;
         };
 
         struct PresentationFramePlan {

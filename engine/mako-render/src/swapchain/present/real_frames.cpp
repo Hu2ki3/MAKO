@@ -164,6 +164,8 @@ VkResult Swapchain::presentNativeFrame(const PresentInvocation& invocation) {
 VkResult Swapchain::presentDirectApplicationFrame(
         const PresentInvocation& invocation,
         const std::string_view healthSource) {
+    if (invocation.originalPresentDeadline)
+        invocation.waitForOutput(*invocation.originalPresentDeadline);
     const VkPresentInfoKHR presentInfo{
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .pNext = invocation.nextChain,
@@ -244,6 +246,8 @@ VkResult Swapchain::presentOriginalImage(
         .pSwapchains = &invocation.swapchain,
         .pImageIndices = &invocation.imageIndex,
     };
+    if (invocation.originalPresentDeadline)
+        invocation.waitForOutput(*invocation.originalPresentDeadline);
     const auto originalPresentStarted = startPresentDiagnostic();
     const auto result = this->queuePresentWithRetirementFence(
         invocation.vk, invocation.queue, presentInfo
@@ -444,7 +448,9 @@ VkResult Swapchain::presentHistoryOnly(
             this->adaptiveScheduler->historyWarmupIsRecovery(),
             std::nullopt
         );
-        const auto recoveryCompleted = DiagnosticsClock::now();
+        const auto recoveryCompleted = std::max(DiagnosticsClock::now(),
+            invocation.originalPresentDeadline.value_or(
+                DiagnosticsClock::time_point{}));
         const bool transitionRecoveryActive = this->recoveryState
             .orderedAcquireRecovery.transitionRecoveryActive();
         this->adaptiveScheduler->consumeHistoryWarmupFrame(

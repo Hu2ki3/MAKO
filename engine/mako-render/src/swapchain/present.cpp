@@ -34,6 +34,16 @@ using namespace mako::layer;
 
 using namespace mako::layer::present_detail;
 
+void Swapchain::PresentInvocation::waitForOutput(
+        const DiagnosticsClock::time_point deadline) const {
+    const auto waitStarted = startPresentDiagnostic();
+    std::this_thread::sleep_until(deadline);
+    // The old source-cap sleep preceded present diagnostics. Moving that
+    // wait between outputs must not report intentional limiting as slow GPU
+    // work or emit a slow-present record on every capped frame.
+    this->started += finishPresentDiagnostic(waitStarted);
+}
+
 VkResult Swapchain::present(const vk::Vulkan& vk,
         const VkQueue queue, const VkSwapchainKHR swapchain,
         void* nextChain, const uint32_t imageIndex,
@@ -181,21 +191,50 @@ VkResult Swapchain::present(const vk::Vulkan& vk,
     const auto limiterDeadline = this->realFramePacer.schedule(
         limiterArrival, baseFpsCap
     );
-    if (limiterDeadline > limiterArrival)
-        std::this_thread::sleep_until(limiterDeadline);
+    const bool fractionalDeadlinePacing = limiterDeadline > limiterArrival &&
+        fractionalBaseCapPacesOutputs(
+        this->profile, baseFpsCap,
+        this->privateOrderedTransport && !this->info.variableSurface &&
+            !this->info.gamescopeScalingSurface && !this->spatialScaler &&
+            !this->wsiPresentTimingQuery && !hasPresentTiming(lowerNextChain) &&
+            !this->recoveryState.orderedAcquireRecovery.active()
+    );
+    if (!fractionalDeadlinePacing) {
+        this->realFramePacer.resetOutputs();
+        if (limiterDeadline > limiterArrival)
+            std::this_thread::sleep_until(limiterDeadline);
+    }
+    // Output deadlines may put the last image before the cap boundary. Keep
+    // the existing application-return deadline on every exit, including
+    // fallback and exception paths, without adding another frame of latency.
+    struct SourceCapCompletion {
+        std::optional<DiagnosticsClock::time_point> deadline;
+        ~SourceCapCompletion() {
+            if (deadline)
+                std::this_thread::sleep_until(*deadline);
+        }
+    } sourceCapCompletion{fractionalDeadlinePacing
+        ? std::optional{limiterDeadline} : std::nullopt};
 
     const auto presentNow = DiagnosticsClock::now();
-    const PresentInvocation invocation{
+    // Observe the reserved real-frame cadence, while resource/recovery clocks
+    // continue using wall time. Fractional work uses the existing limiter's
+    // slack; control returns to the game no earlier than that same deadline.
+    const auto cadenceNow = fractionalDeadlinePacing
+        ? std::max(limiterDeadline, presentNow) : presentNow;
+    PresentInvocation invocation{
         .vk = vk,
         .queue = queue,
         .swapchain = swapchain,
         .nextChain = lowerNextChain,
         .imageIndex = imageIndex,
         .waitSemaphores = waitSemaphores,
-        .cadenceStarted = presentNow,
+        .cadenceStarted = cadenceNow,
         .started = startPresentDiagnostic(),
+        .originalPresentDeadline = fractionalDeadlinePacing
+            ? std::optional{limiterDeadline} : std::nullopt,
     };
-    this->recordPresentCadence(presentNow);
+    this->recordPresentCadence(cadenceNow);
 
     if (std::exchange(this->replacementWsiPrimePending, false)) {
         if (presentDiagnosticsEnabled()) {
@@ -349,7 +388,7 @@ VkResult Swapchain::present(const vk::Vulkan& vk,
         this->frameState.backendFrameIndex % 2
     );
     auto plan = this->prepareFramePlan(
-        presentNow, orderedAcquireRecoveryProbe
+        cadenceNow, orderedAcquireRecoveryProbe
     );
     plan.boundedOrderedAcquireProbe = boundedOrderedAcquireProbe;
 
@@ -535,6 +574,8 @@ VkResult Swapchain::present(const vk::Vulkan& vk,
                     plan.admittedGeneratedFrameCount)) {
                 return this->presentNativeFrame(invocation);
             }
+            if (invocation.originalPresentDeadline)
+                invocation.waitForOutput(*invocation.originalPresentDeadline);
             return this->retireAcquiredImagesAndPresent(
                 vk, queue, swapchain, lowerNextChain,
                 imageIndex, waitSemaphores,
@@ -560,6 +601,22 @@ VkResult Swapchain::present(const vk::Vulkan& vk,
     plan.submitSourceCopyDuration = finishPresentDiagnostic(
         sourceCopyStarted
     );
+    if (fractionalDeadlinePacing && !plan.historyWarmupActive &&
+            plan.scheduledGeneratedFrames.size() ==
+                plan.requestedGeneratedFrames.size()) {
+        invocation.pacedOutputs = this->realFramePacer.scheduleOutputs(
+            DiagnosticsClock::now(), limiterDeadline,
+            std::min<double>(this->profile.target_fps,
+                this->gamescopeRefreshHz.value_or(this->profile.target_fps)),
+            plan.scheduledGeneratedFrames.size() + 1,
+            this->adaptiveScheduler &&
+                this->adaptiveScheduler->snapshot().targetOutputClockActive);
+        if (invocation.pacedOutputs)
+            invocation.originalPresentDeadline = invocation.pacedOutputs->at(
+                invocation.pacedOutputs->count - 1);
+    } else {
+        this->realFramePacer.resetOutputs();
+    }
     if (bypassGeneratedFrames)
         return this->presentHistoryOnly(invocation, plan);
     this->bridgeOutputBatchSize = plan.scheduledGeneratedFrames.size() + 1;

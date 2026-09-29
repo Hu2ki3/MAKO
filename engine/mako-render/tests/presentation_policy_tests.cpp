@@ -216,7 +216,105 @@ void testOrderedPresentationTimeline() {
     }
 }
 
+void testFractionalUsesExistingSourceDeadline() {
+    using Clock = RealFramePacer::Clock;
+    const auto start = Clock::time_point{10s};
+    for (const auto [sourceFps, targetFps] : std::array{
+            std::pair{60., 90.}, std::pair{40., 60.}, std::pair{24., 60.},
+            std::pair{20., 70.}, std::pair{20., 90.}, std::pair{72., 120.}}) {
+        const auto sourceInterval = std::chrono::duration_cast<Clock::duration>(
+            std::chrono::duration<double>(1.0 / sourceFps));
+        const auto outputInterval = std::chrono::duration_cast<Clock::duration>(
+            std::chrono::duration<double>(1.0 / targetFps));
+        RealFramePacer pacer;
+        static_cast<void>(pacer.schedule(start, sourceFps));
+        auto previousReal = start;
+        std::optional<Clock::time_point> previousOutput;
+        double credit = 0.5;
+        for (size_t frame = 0; frame < 60; ++frame) {
+            // The cap reserves the same return deadline regardless of whether
+            // the Fractional ledger grants a shorter or longer output batch.
+            const auto real = pacer.schedule(previousReal + sourceInterval / 8, sourceFps);
+            expect(real == previousReal + sourceInterval,
+                "Fractional output placement changed the source-cap cadence");
+            credit += targetFps / sourceFps;
+            const auto count = static_cast<size_t>(std::floor(credit + 1e-9));
+            credit -= static_cast<double>(count);
+            const auto batch = pacer.scheduleOutputs(previousReal + 1ms, real, targetFps, count, true);
+            expect(batch && batch->count == count &&
+                    batch->first > previousReal && batch->at(count - 1) <= real,
+                "Fractional outputs escaped the reserved source interval");
+            for (size_t output = 0; output < count; ++output) {
+                const auto deadline = batch->at(output);
+                if (previousOutput) {
+                    expect(deadline > *previousOutput,
+                        "Fractional output overtook an earlier image");
+                    if (frame > 2) {
+                        const auto error = deadline - *previousOutput - outputInterval;
+                        expect(error >= -100ns && error <= 100ns,
+                            "alternating Fractional batches lost the target-output clock");
+                    }
+                }
+                previousOutput = deadline;
+            }
+            previousReal = real;
+        }
+        const auto lateArrival = previousReal + 2s;
+        const auto real = pacer.schedule(lateArrival, sourceFps);
+        const auto resumed = pacer.scheduleOutputs(lateArrival, real, targetFps, 2, true);
+        expect(real == lateArrival && !resumed,
+            "loading stall retained catch-up debt or extended the source cap");
+        pacer.resetOutputs();
+        const auto changed = pacer.scheduleOutputs(real, real + sourceInterval, targetFps, 1, true);
+        expect(changed && changed->first == real + sourceInterval,
+            "leaving Fractional retained an earlier output clock");
+    }
+    RealFramePacer pacer;
+    expect(!pacer.scheduleOutputs(start, start, 90., 2, true),
+        "output pacing invented an unconfigured source cap");
+    static_cast<void>(pacer.schedule(start, 60.));
+    expect(!pacer.scheduleOutputs(start, start + 17ms, 90., 5, true) &&
+            !pacer.scheduleOutputs(start, start + 17ms, 90., 0, true),
+        "output pacing borrowed extra source time for an unplaceable batch");
+    for (size_t frame = 1; frame <= 6; ++frame) {
+        const auto deadline = start + 17ms * frame;
+        expect(!pacer.scheduleOutputs(deadline - 16ms, deadline, 90., 1, false),
+            "native-only startup/probe frames must retain the source-cap deadline");
+    }
+    const auto resumed = pacer.scheduleOutputs(start + 134ms, start + 150ms, 90., 1, true);
+    expect(resumed && resumed->first == start + 150ms,
+        "native-only pacing retained stale Fractional output debt");
+    expect(pacer.scheduleOutputs(start + 151ms, start + 167ms, 120., 2, false).has_value(),
+        "an accepted constant generated cadence lost capped output pacing");
+    // A cap never guarantees the game reaches it. Both late arrivals and
+    // preparation that consumes the cap's slack must keep ordinary delivery.
+    for (const auto [cap, actual] : std::array{
+            std::pair{30., 27.}, std::pair{45., 38.}, std::pair{45., 37.},
+            std::pair{60., 58.}, std::pair{60., 57.}}) {
+        RealFramePacer late;
+        static_cast<void>(late.schedule(start, cap));
+        const auto arrival = start + std::chrono::duration_cast<Clock::duration>(
+            std::chrono::duration<double>(1. / actual));
+        const auto deadline = late.schedule(arrival, cap);
+        expect(deadline == arrival &&
+                !late.scheduleOutputs(arrival, deadline, 2 * cap, 2, true),
+            "below-cap source acquired an additional output wait");
+        const auto next = late.schedule(arrival + 1ms, cap);
+        expect(late.scheduleOutputs(arrival + 1ms, next, 2 * cap, 2, true).has_value(),
+            "return to the cap retained stale output debt");
+        expect(!late.scheduleOutputs(next + 1ms, next, 2 * cap, 2, true),
+            "slow preparation compressed an expired output batch");
+    }
+    for (const double invalid : {0., -1., 1001.,
+            std::numeric_limits<double>::infinity(),
+            std::numeric_limits<double>::quiet_NaN()}) {
+        expect(!pacer.scheduleOutputs(start, start + 17ms, invalid, 2, true),
+            "Fractional output pacing accepted an invalid target");
+    }
+}
+
 int main() {
+    testFractionalUsesExistingSourceDeadline();
     testSmoothCadenceCapFollowsActivePlan();
     testOrderedPresentationTimeline();
     testOrderedAcquireUsesExplicitFailureOnly();

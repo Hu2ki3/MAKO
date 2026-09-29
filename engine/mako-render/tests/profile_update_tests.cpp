@@ -41,6 +41,33 @@ namespace {
 }
 
 int main() {
+    auto fractionalPacing = adaptiveProfile();
+    fractionalPacing.frame_generation_provisioned = true;
+    for (const bool smooth : {false, true}) {
+        fractionalPacing.adaptive_stable_cadence = smooth;
+        expect(fractionalBaseCapPacesOutputs(fractionalPacing, 60.0, true),
+            "Fractional source-cap slack must be usable with either Smooth Cadence setting");
+        fractionalPacing.adaptive = false;
+        expect(!fractionalBaseCapPacesOutputs(fractionalPacing, 60.0, true),
+            "Fixed must retain its original source pacing");
+        fractionalPacing.adaptive = true;
+        fractionalPacing.adaptive_auto_base_fps_cap = true;
+        expect(!fractionalBaseCapPacesOutputs(fractionalPacing, 45.0, true),
+            "Steady must retain its original source pacing");
+        fractionalPacing.adaptive_auto_base_fps_cap = false;
+    }
+    expect(!fractionalBaseCapPacesOutputs(fractionalPacing, 60.0, false) &&
+            !fractionalBaseCapPacesOutputs(fractionalPacing, 0.0, true) &&
+            !fractionalBaseCapPacesOutputs(fractionalPacing, 90.0, true) &&
+            !fractionalBaseCapPacesOutputs(fractionalPacing, 120.0, true),
+        "Fractional output pacing must not invent a source cap or override another transport");
+    fractionalPacing.frame_generation_enabled = false;
+    expect(!fractionalBaseCapPacesOutputs(fractionalPacing, 60.0, true),
+        "disabled generation must not defer its source cap");
+    fractionalPacing.frame_generation_enabled = true;
+    fractionalPacing.frame_generation_provisioned = false;
+    expect(!fractionalBaseCapPacesOutputs(fractionalPacing, 60.0, true),
+        "unprovisioned generation must not defer its source cap");
     auto bridgeProfile = ls::GameConf{};
     bridgeProfile.frame_generation_provisioned = true;
     bridgeProfile.frame_generation_enabled = true;

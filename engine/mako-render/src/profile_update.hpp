@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -406,6 +407,19 @@ namespace mako::layer {
         return profile.adaptive && !profile.adaptive_auto_base_fps_cap &&
             profile.adaptive_fractional_real_frame_priority !=
                 ls::AdaptiveFractionalRealFramePriority::Auto;
+    }
+
+    /// A capped Fractional plan can prepare its outputs during the existing
+    /// source-cap wait. Other modes and timestamped/variable WSI transports
+    /// retain their current pacing owner. No additional source cap is created.
+    [[nodiscard]] inline bool fractionalBaseCapPacesOutputs(
+            const ls::GameConf& profile, const double effectiveCap,
+            const bool untimedOrderedTransport) {
+        return profile.frame_generation_provisioned &&
+            profile.frame_generation_enabled && profile.adaptive &&
+            !profile.adaptive_auto_base_fps_cap && untimedOrderedTransport &&
+            std::isfinite(effectiveCap) && effectiveCap > 0.0 &&
+            static_cast<double>(profile.target_fps) > effectiveCap;
     }
 
     /// Auto-cap aligns the common healthy path with an exact 2x cadence.
