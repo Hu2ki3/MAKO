@@ -41,6 +41,7 @@ namespace {
     int presentModes{};
     int presentTimes{};
     uint32_t presentId{};
+    wl_proxy* lastTimedProxy{};
     uint64_t presentTime{};
     uint32_t presentMode{};
     uint32_t feedbackImageCount{};
@@ -60,6 +61,8 @@ namespace {
         return proxy;
     }
     void drop(wl_proxy* proxy) {
+        if (lastTimedProxy == proxy)
+            lastTimedProxy = nullptr;
         std::erase(objects, proxy);
         delete proxy;
     }
@@ -87,6 +90,19 @@ extern "C" {
     int mako_test_surface_present_times() { return presentTimes; }
     uint32_t mako_test_surface_present_id() { return presentId; }
     uint64_t mako_test_surface_present_time() { return presentTime; }
+    void mako_test_surface_timing() {
+        auto* proxy = lastTimedProxy;
+        if (!proxy || !proxy->listener)
+            std::abort();
+        using Timing = void (*)(void*, wl_proxy*, uint32_t, uint32_t, uint32_t,
+            uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
+        using Refresh = void (*)(void*, wl_proxy*, uint32_t, uint32_t);
+        const uint64_t actual = presentTime + 100000;
+        reinterpret_cast<Timing>(proxy->listener[0])(proxy->data, proxy, presentId,
+            static_cast<uint32_t>(presentTime >> 32), static_cast<uint32_t>(presentTime),
+            static_cast<uint32_t>(actual >> 32), static_cast<uint32_t>(actual), 0, 0, 0, 0);
+        reinterpret_cast<Refresh>(proxy->listener[1])(proxy->data, proxy, 0, 8333333);
+    }
     int mako_test_surface_present_modes() { return presentModes; }
     uint32_t mako_test_surface_present_mode() { return presentMode; }
     uint32_t mako_test_surface_feedback_image_count() { return feedbackImageCount; }
@@ -161,6 +177,7 @@ extern "C" {
                 ++presentModes;
                 presentMode = args[0].u;
             } else if (opcode == 5) {
+                lastTimedProxy = proxy;
                 ++presentTimes;
                 presentId = args[0].u;
                 presentTime = (uint64_t{args[1].u} << 32) | args[2].u;

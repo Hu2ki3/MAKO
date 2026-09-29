@@ -59,6 +59,7 @@ class Plugin:
         self.configuration_service = ConfigurationService()
         self.runtime_state_service = RuntimeStateService()
         self.flatpak_service = FlatpakService()
+        self._flatpak_vrr_monitor: asyncio.subprocess.Process | None = None
 
     async def install_mako(self) -> InstallationResult:
         """Install MAKO Renderer and refresh existing Flatpak runtime copies.
@@ -69,6 +70,9 @@ class Plugin:
         result = self.installation_service.install()
         if not result.get("success"):
             return result
+
+        await self._stop_flatpak_vrr_monitor()
+        await self._start_flatpak_vrr_monitor()
 
         refresh = self.flatpak_service.refresh_installed_extensions()
         updated_versions = refresh.get("updated_versions", [])
@@ -106,6 +110,7 @@ class Plugin:
         Returns:
             UninstallationResponse dict with success status and removed files
         """
+        await self._stop_flatpak_vrr_monitor()
         return self.installation_service.uninstall()
 
     async def check_lossless_scaling_dll(self) -> DllDetectionResponse:
@@ -527,6 +532,45 @@ class Plugin:
         """
         return self.flatpak_service.remove_app_override(app_id)
 
+    async def _start_flatpak_vrr_monitor(self):
+        """Keep host control outside Flatpak; the Renderer helper owns leases."""
+        monitor = getattr(self, "_flatpak_vrr_monitor", None)
+        if monitor is not None and monitor.returncode is None:
+            return
+        helper = self.installation_service.vrr_lease_file
+        try:
+            user_home = self.installation_service.user_home
+            if not helper.is_file() or user_home.stat().st_uid != os.geteuid():
+                return
+            environment = {
+                "PATH": "/usr/bin:/bin",
+                "HOME": str(user_home),
+                "MAKO_CONFIG": str(self.configuration_service.config_file_path),
+            }
+            self._flatpak_vrr_monitor = await asyncio.create_subprocess_exec(
+                str(helper), "--watch-flatpak", env=environment,
+            )
+            decky.logger.info("MAKO Decky started host VRR discovery for Flatpak games")
+        except OSError as error:
+            decky.logger.warning("Could not start Flatpak VRR discovery: %s", error)
+
+    async def _stop_flatpak_vrr_monitor(self):
+        monitor = getattr(self, "_flatpak_vrr_monitor", None)
+        self._flatpak_vrr_monitor = None
+        if monitor is None or monitor.returncode is not None:
+            return
+        try:
+            monitor.terminate()
+            await asyncio.wait_for(monitor.wait(), timeout=6)
+        except ProcessLookupError:
+            pass
+        except asyncio.TimeoutError:
+            try:
+                monitor.kill()
+            except ProcessLookupError:
+                pass
+            await monitor.wait()
+
     async def _main(self):
         """
         Main entry point for the plugin.
@@ -630,6 +674,8 @@ class Plugin:
         except OSError as error:
             decky.logger.warning("Could not install the diagnostics helper: %s", error)
 
+        await self._start_flatpak_vrr_monitor()
+
     async def _unload(self):
         """
         Cleanup tasks when the plugin is unloaded.
@@ -637,6 +683,7 @@ class Plugin:
         This method is called by Decky Loader when the plugin is being unloaded.
         Any cleanup code should go here.
         """
+        await self._stop_flatpak_vrr_monitor()
         decky.logger.info("MAKO Decky unloaded")
 
     async def _uninstall(self):
@@ -647,6 +694,8 @@ class Plugin:
         Performs cleanup of this plugin's private files.
         """
         decky.logger.info("MAKO Decky is being uninstalled")
+
+        await self._stop_flatpak_vrr_monitor()
 
         # Clean up MAKO Renderer files when the plugin is uninstalled
         self.installation_service.cleanup_on_uninstall()

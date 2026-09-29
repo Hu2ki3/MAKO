@@ -297,15 +297,24 @@ if(BUILD_TESTING)
                 "$<TARGET_FILE_DIR:mako-surface-client-fixture>/libX11-xcb.so.1")
         add_executable(mako-gamescope-scaling-surface-tests
             "tests/gamescope_scaling_surface_tests.cpp"
+            "src/present_diagnostics.cpp"
             "src/gamescope_scaling_surface.cpp")
         target_include_directories(mako-gamescope-scaling-surface-tests
             PRIVATE "src" "../mako-common/include")
         target_link_libraries(mako-gamescope-scaling-surface-tests
-            PRIVATE mako-surface-client-fixture ${CMAKE_DL_LIBS})
+            PRIVATE mako-surface-client-fixture mako-adaptive ${CMAKE_DL_LIBS})
         add_test(NAME gamescope-scaling-surface
             COMMAND ${CMAKE_COMMAND} -E env
+                "MAKO_PRESENT_DIAGNOSTICS=1"
                 "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:mako-surface-client-fixture>"
                 $<TARGET_FILE:mako-gamescope-scaling-surface-tests>)
+        add_test(NAME gamescope-scaling-surface-diagnostics-off
+            COMMAND ${CMAKE_COMMAND} -E env
+                "MAKO_PRESENT_DIAGNOSTICS=0"
+                "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:mako-surface-client-fixture>"
+                $<TARGET_FILE:mako-gamescope-scaling-surface-tests>)
+        mako_register_portable_policy_test(
+            mako-gamescope-scaling-surface-tests gamescope-scaling-surface-diagnostics-off)
         mako_register_portable_policy_test(
             mako-gamescope-scaling-surface-tests gamescope-scaling-surface)
     endif()

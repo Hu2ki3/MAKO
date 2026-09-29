@@ -100,6 +100,8 @@ The optional Gamescope VRR override runs in a separate systemd user service. Its
 
 With Gamescope WSI disabled, a `spatial scaling surface bridge` record only shows that MAKO associated the game with Gamescope. To confirm that scaling actually ran, check that the same session reports different active source and presentation resolutions.
 
+With presentation diagnostics enabled, the isolated scaling bridge emits `operation=gamescope-bridge-timing` at most once per second per timed swapchain. It summarizes requested and compositor-reported intervals, CPU submission lateness, and reported lateness relative to each requested timestamp. `feedbacks`, `outstanding`, `unmatched`, `overwritten`, and `discontinuities` describe incomplete or rejected feedback; interval sample counts cover only consecutive IDs. Zero feedback means unavailable evidence, not perfect pacing. Gamescope may report its predicted target vblank, so these records do not establish physical scanout or input latency. Collection adds no socket read, roundtrip, or pacing change and retains at most 128 pending requests per diagnostic swapchain. The `scaling` and `performance` report presets retain these records.
+
 ## 4. Restore normal launch settings
 
 After creating the report:

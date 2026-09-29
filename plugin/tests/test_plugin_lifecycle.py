@@ -4,6 +4,9 @@ import asyncio
 import sys
 from types import SimpleNamespace
 import unittest
+from unittest.mock import AsyncMock, Mock, patch
+from pathlib import Path
+import tempfile
 
 
 class _Logger:
@@ -20,6 +23,7 @@ class PluginLifecycleTests(unittest.TestCase):
     def test_main_runs_every_current_startup_maintenance_task(self):
         calls = []
         plugin = Plugin.__new__(Plugin)
+        plugin._start_flatpak_vrr_monitor = AsyncMock()
         plugin.configuration_service = SimpleNamespace(
             enforce_unsupported_host_passthrough_if_needed=lambda: calls.append(
                 "host-passthrough"
@@ -55,6 +59,7 @@ class PluginLifecycleTests(unittest.TestCase):
         )
 
         asyncio.run(plugin._main())
+        plugin._start_flatpak_vrr_monitor.assert_awaited_once()
 
         self.assertEqual(calls, [
             "profile-metadata",
@@ -68,6 +73,7 @@ class PluginLifecycleTests(unittest.TestCase):
     def test_main_stops_before_migrations_on_unsupported_host(self):
         calls = []
         plugin = Plugin.__new__(Plugin)
+        plugin._start_flatpak_vrr_monitor = AsyncMock()
         plugin.configuration_service = SimpleNamespace(
             enforce_unsupported_host_passthrough_if_needed=lambda: calls.append(
                 "host-passthrough"
@@ -91,11 +97,34 @@ class PluginLifecycleTests(unittest.TestCase):
         )
 
         asyncio.run(plugin._main())
+        plugin._start_flatpak_vrr_monitor.assert_not_called()
 
         self.assertEqual(calls, [
             "host-passthrough",
             "flatpak-host-boundary",
         ])
+
+    def test_monitor_lifecycle_is_idempotent_and_does_not_kill_game_leases(self):
+        async def exercise():
+            with tempfile.TemporaryDirectory() as temporary:
+                home = Path(temporary)
+                helper = home / "mako-vrr-lease"
+                helper.touch()
+                plugin = Plugin.__new__(Plugin)
+                plugin.installation_service = SimpleNamespace(user_home=home, vrr_lease_file=helper)
+                plugin.configuration_service = SimpleNamespace(config_file_path=home / "conf.toml")
+                process = Mock(returncode=None, wait=AsyncMock(return_value=0))
+                with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)) as spawn:
+                    await plugin._start_flatpak_vrr_monitor()
+                    await plugin._start_flatpak_vrr_monitor()
+                    spawn.assert_awaited_once()
+                    self.assertEqual(spawn.call_args.args, (str(helper), "--watch-flatpak"))
+                    self.assertEqual(spawn.call_args.kwargs["env"]["HOME"], str(home))
+                    await plugin._unload()
+                    await plugin._stop_flatpak_vrr_monitor()
+                    process.terminate.assert_called_once()
+                    process.kill.assert_not_called()
+        asyncio.run(exercise())
 
 
 if __name__ == "__main__":

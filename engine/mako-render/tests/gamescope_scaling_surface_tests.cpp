@@ -2,6 +2,7 @@
 
 #include "gamescope_scaling_surface.hpp"
 #include "spatial_scaling_policy.hpp"
+#include "bridge_present_timing.hpp"
 #include <algorithm>
 #include <X11/Xlib.h>
 #include <xcb/xcb.h>
@@ -12,6 +13,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <sstream>
 
 extern "C" {
     void mako_test_surface_mode(int);
@@ -31,6 +33,7 @@ extern "C" {
     uint32_t mako_test_surface_window();
     uint32_t mako_test_surface_server();
     void mako_test_surface_retire();
+    void mako_test_surface_timing();
 }
 
 using namespace mako::layer;
@@ -184,6 +187,29 @@ namespace {
 }
 
 int main() {
+    using present_diagnostics::BridgePresentTiming;
+    BridgePresentTiming timing;
+    constexpr uint64_t origin = 10000000000;
+    timing.request(UINT32_MAX, origin, origin, origin - 100000);
+    timing.feedback(UINT32_MAX, origin, origin + 200000);
+    timing.request(0, origin + 8000000, origin + 1000000, origin + 1000000);
+    timing.feedback(0, origin + 8000000, origin + 8500000);
+    timing.feedback(0, origin + 8000000, origin + 8500000); // Duplicate.
+    expect(!timing.take(origin + 999999999), "diagnostic window must be rate limited");
+    const auto window = timing.take(origin + 1000000000);
+    expect(window && window->requests == 2 && window->feedbacks == 2 && window->unmatched == 1 &&
+        window->requestedInterval.mean() == 8 && window->reportedInterval.mean() == 8.3 &&
+        window->submitLateness.maximum == 0.1 && timing.outstanding() == 0,
+        "timing correlation must preserve 64-bit timestamps and wrapped IDs");
+    for (uint32_t id = 1; id <= 129; ++id)
+        timing.request(id, origin + id, origin + 1000000001, origin);
+    timing.feedback(1, origin + 1, origin + 2); // Overwritten, not a good sample.
+    timing.feedback(129, origin + 130, origin + 131); // Mismatched request.
+    timing.feedback(129, origin + 129, origin + 9000000); // Gap in feedback.
+    const auto gaps = timing.take(origin + 2000000000);
+    expect(gaps && gaps->overwritten == 1 && gaps->unmatched == 2 && gaps->feedbacks == 1 &&
+        gaps->discontinuities == 1 && gaps->reportedInterval.count == 0 && timing.outstanding() == 127,
+        "missing or mismatched feedback must not fabricate interval samples");
     VkInstanceCreateInfo instanceInfo{.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     expect(!requestsGamescopeScalingSurface(instanceInfo), "headless probe must not open a connection");
     const char* extensions[]{"VK_KHR_surface", "VK_KHR_xlib_surface"};
@@ -322,8 +348,11 @@ int main() {
                 "MAKO Renderer", VK_PRESENT_MODE_FIFO_KHR, 120),
             "timed bridge creation");
         const int times = mako_test_surface_present_times();
+        std::ostringstream timingLog;
+        auto* previousLog = std::cerr.rdbuf(timingLog.rdbuf());
+        const int timedReads = mako_test_surface_reads();
         uint64_t previousTime = 0;
-        for (uint32_t output = 1; output <= 3; ++output) {
+        for (uint32_t output = 1; output <= 130; ++output) {
             const auto before = std::chrono::steady_clock::now();
             expect(bridge.preparePresent(surface, timedSwapchain, 120, 120),
                 "timed generated/real bridge output");
@@ -332,15 +361,27 @@ int main() {
                 before.time_since_epoch()).count();
             expect(mako_test_surface_present_times() == times + static_cast<int>(output) &&
                     mako_test_surface_present_id() == output && ns > previousTime &&
-                    ns >= static_cast<uint64_t>(nowNs) + 16000000 &&
-                    ns <= static_cast<uint64_t>(nowNs) + 50000000,
+                    (output > 3 || (ns >= static_cast<uint64_t>(nowNs) + 16000000 &&
+                    ns <= static_cast<uint64_t>(nowNs) + 50000000)),
                 "protocol lost per-output id or monotonic 64-bit future deadline");
             previousTime = ns;
+            mako_test_surface_timing();
         }
+        std::cerr.rdbuf(previousLog);
+        const bool diagnostics = std::getenv("MAKO_PRESENT_DIAGNOSTICS") &&
+            std::strcmp(std::getenv("MAKO_PRESENT_DIAGNOSTICS"), "1") == 0;
+        expect((timingLog.str().find("operation=gamescope-bridge-timing") != std::string::npos) == diagnostics,
+            "bridge timing must be opt-in");
+        if (diagnostics)
+            expect(timingLog.str().find("refresh_cycle_ns=8333333") != std::string::npos &&
+                timingLog.str().find("lateness_mean_ms=0.1") != std::string::npos &&
+                timingLog.str().find("unmatched=0") != std::string::npos,
+                "protocol timing and refresh events must reach the matching accumulator");
+        expect(mako_test_surface_reads() == timedReads, "timing diagnostics must not read the socket");
         bridge.destroySwapchain(surface, timedSwapchain);
         const int associations = mako_test_surface_associations();
         const int presentModes = mako_test_surface_present_modes();
-        expect(associations == 3, "surface creation must not steal existing window content");
+        expect(associations == 130, "surface creation must not steal existing window content");
         const int reads = mako_test_surface_reads();
         const int presentGeometryQueries = mako_test_surface_geometry_queries();
         for (int frame = 0; frame < 100; ++frame)

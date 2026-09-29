@@ -16,10 +16,13 @@ from pathlib import Path
 import re
 import signal
 import shutil
+import socket
 import stat
+import struct
 import subprocess
 import sys
 import time
+from typing import NamedTuple
 
 
 POLL_SECONDS = 1.0
@@ -32,6 +35,109 @@ VRR_DISPLAY_FLAG = 0x4
 STOP = False
 XROOT_CACHE: tuple[str, int, str] | None = None
 XROOT_RETRY_AFTER: tuple[str, int, float] | None = None
+
+
+class Publisher(NamedTuple):
+    """A normalized preference tied to a live host process identity."""
+
+    pid: int
+    tick: int
+    mode: str
+
+
+def read_status(path: Path) -> dict:
+    descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        info = os.fstat(descriptor)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                or info.st_size > 65536):
+            raise ValueError("invalid status file")
+        payload = os.read(descriptor, 65537)
+        if len(payload) > 65536:
+            raise ValueError("oversized status file")
+        value = json.loads(payload)
+        if not isinstance(value, dict):
+            raise ValueError("invalid status object")
+        return value
+    finally:
+        os.close(descriptor)
+
+
+def lock_owners() -> dict[tuple[int, int, int], int]:
+    """The host kernel identifies the holder even across PID namespaces."""
+    try:
+        with Path("/proc/locks").open() as stream:
+            data = stream.read(1024 * 1024 + 1)
+        if len(data) > 1024 * 1024:
+            return {}
+        owners = {}
+        for line in data.splitlines():
+            fields = line.split()
+            if len(fields) != 8 or fields[1:4] != ["FLOCK", "ADVISORY", "WRITE"]:
+                continue
+            major, minor, inode = fields[5].split(":")
+            owners[(int(major, 16), int(minor, 16), int(inode))] = int(fields[4])
+        return owners
+    except (OSError, ValueError):
+        return {}
+
+
+def namespace_publisher(path: Path, pid: int, tick: int,
+                        owners: dict[tuple[int, int, int], int]) -> int | None:
+    """Require a held Renderer lock, UID, start tick, and namespace PID."""
+    try:
+        lock = path.with_name(path.name + ".lock").lstat()
+        if not stat.S_ISREG(lock.st_mode) or lock.st_uid != os.geteuid():
+            return None
+        host_pid = owners.get((os.major(lock.st_dev), os.minor(lock.st_dev), lock.st_ino))
+        if host_pid is None or Path(f"/proc/{host_pid}").stat().st_uid != os.geteuid():
+            return None
+        identity = process_identity(host_pid)
+        if identity is None or identity[1] != tick:
+            return None
+        for line in Path(f"/proc/{host_pid}/status").read_text().splitlines():
+            if line.startswith("NSpid:"):
+                return host_pid if int(line.split()[-1]) == pid else None
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def publishers(path: Path) -> list[Publisher]:
+    result: list[Publisher] = []
+    owners = None
+    try:
+        for index, status_path in enumerate(path.glob("*-frame-generation-*.json")):
+            if index >= 64:
+                return []  # Ambiguous/unbounded inventory must not choose a game.
+            try:
+                record = read_status(status_path)
+                pid, tick = record["pid"], record["process_start_ticks"]
+                if type(pid) is not int or type(tick) is not int or pid <= 0 or tick <= 0:
+                    continue
+                identity = process_identity(pid)
+                if identity is None or identity[1] != tick:
+                    if owners is None:
+                        owners = lock_owners()
+                    pid = namespace_publisher(status_path, pid, tick, owners)
+                    if pid is None:
+                        continue
+                if Path(f"/proc/{pid}").stat().st_uid != os.geteuid():
+                    continue
+                requested = record["requested"]
+                mode = requested.get("gamescope_vrr_mode")
+                if (not isinstance(requested.get("name"), str) or not requested["name"]
+                        or mode not in ("follow-steam", "on", "off")):
+                    continue
+                if (requested.get("frame_generation_provisioned") is not True or
+                        requested.get("frame_generation_enabled") is not True):
+                    mode = "follow-steam"
+                result.append(Publisher(pid, tick, mode))
+            except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                continue
+    except OSError:
+        pass
+    return result
 
 
 def _stop(_signal: int, _frame: object) -> None:
@@ -80,38 +186,12 @@ def active_mode(path: Path, parent: int, start_tick: int, token: str,
                 observed: set[tuple[int, int]]) -> str | None:
     """Use only live frame-generation contexts in this launch's process tree."""
     modes: set[str] = set()
-    try:
-        paths = path.iterdir()
-        for status_path in paths:
-            if not status_path.name.endswith(".json") or "-frame-generation-" not in status_path.name:
+    for pid, tick, mode in publishers(path):
+        if (pid, tick) not in observed:
+            if not has_launch_token(pid, token) and not descendant_of(pid, parent, start_tick):
                 continue
-            try:
-                if status_path.stat().st_size > 65536:
-                    continue
-                record = json.loads(status_path.read_text())
-                pid = record["pid"]
-                tick = record["process_start_ticks"]
-                if not isinstance(pid, int) or not isinstance(tick, int):
-                    continue
-                if process_identity(pid) is None or process_identity(pid)[1] != tick:
-                    continue
-                if (pid, tick) not in observed:
-                    if not has_launch_token(pid, token) and not descendant_of(pid, parent, start_tick):
-                        continue
-                    observed.add((pid, tick))
-                requested = record.get("requested", {})
-                mode = requested.get("gamescope_vrr_mode")
-                if (isinstance(requested.get("name"), str) and
-                        requested["name"] and mode in ("follow-steam", "on", "off")):
-                    if (requested.get("frame_generation_provisioned") is True and
-                            requested.get("frame_generation_enabled") is True):
-                        modes.add(mode)
-                    else:
-                        modes.add("follow-steam")
-            except (OSError, ValueError, KeyError, TypeError, AttributeError):
-                continue
-    except OSError:
-        return None
+            observed.add((pid, tick))
+        modes.add(mode)
     return next(iter(modes)) if len(modes) == 1 else None
 
 
@@ -128,13 +208,13 @@ def read_vrr_capability() -> bool | None:
     return bool(int(match.group(1), 16) & VRR_DISPLAY_FLAG) if match else None
 
 
-def xroot_properties(display: str) -> dict[str, int] | None:
+def xroot_properties(display: str, environment: dict[str, str] | None = None) -> dict[str, int] | None:
     """Read Gamescope's Xwayland root without interpreting arbitrary xprop text."""
     try:
         result = subprocess.run((
             "xprop", "-display", display, "-root", "GAMESCOPE_PID",
             "GAMESCOPE_XWAYLAND_SERVER_ID", "GAMESCOPE_VRR_ENABLED",
-        ), capture_output=True, text=True, timeout=1.0, check=False)
+        ), capture_output=True, text=True, timeout=1.0, check=False, env=environment)
     except (OSError, subprocess.TimeoutExpired):
         return None
     if result.returncode:
@@ -399,8 +479,87 @@ def start_service(parent: str, token: str) -> int:
     return 0
 
 
+def flatpak_environment(pid: int, tick: int) -> dict[str, str] | None:
+    """Recover only session identity from a live, same-user Flatpak publisher."""
+    try:
+        if (Path(f"/proc/{pid}").stat().st_uid != os.geteuid() or
+                not Path(f"/proc/{pid}/root/.flatpak-info").is_file()):
+            return None
+        with Path(f"/proc/{pid}/environ").open("rb") as stream:
+            payload = stream.read(262145)
+        if len(payload) > 262144:
+            return None
+        allowed = {"DISPLAY", "WAYLAND_DISPLAY", "GAMESCOPE_WAYLAND_DISPLAY", "XAUTHORITY"}
+        session = {}
+        for entry in payload.split(b"\0"):
+            key, _, value = entry.partition(b"=")
+            name = key.decode(errors="replace")
+            if name in allowed:
+                session[name] = value.decode()
+        display = session.get("GAMESCOPE_WAYLAND_DISPLAY", "")
+        if (not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", display) or
+                not X_DISPLAY.fullmatch(session.get("DISPLAY", "")) or
+                session.get("WAYLAND_DISPLAY") not in (None, "", display)):
+            return None
+        runtime = f"/run/user/{os.geteuid()}"
+        environment = {"PATH": "/usr/bin:/bin", "HOME": str(Path.home()),
+                       "XDG_RUNTIME_DIR": runtime,
+                       "DBUS_SESSION_BUS_ADDRESS": f"unix:path={runtime}/bus",
+                       "MAKO_CONFIG": str(config_path()), **session}
+        # Bind the protocol socket and X server to the very same compositor.
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+            peer.settimeout(0.25)
+            peer.connect(str(Path(runtime) / display))
+            compositor, uid, _ = struct.unpack("3i", peer.getsockopt(
+                socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")))
+        props = xroot_properties(session["DISPLAY"], environment)
+        if uid != os.geteuid() or not props or props.get("GAMESCOPE_PID") != compositor:
+            return None
+        if (process_identity(pid) or (None, None))[1] != tick:
+            return None
+        # Never import PATH, LD_PRELOAD, Python, or home/config overrides from a game.
+        return environment
+    except (OSError, ValueError, UnicodeError):
+        return None
+
+
+def watch_flatpak() -> int:
+    """Host discovery only; existing detached per-game leases own all writes."""
+    signal.signal(signal.SIGTERM, _stop)
+    signal.signal(signal.SIGINT, _stop)
+    retry_at: dict[tuple[int, int], float] = {}
+    while not STOP:
+        current = {(p.pid, p.tick) for p in publishers(config_path().parent / "runtime-state")
+                   if p.mode in ("on", "off")}
+        retry_at = {key: value for key, value in retry_at.items() if key in current}
+        for pid, tick in current:
+            key = (pid, tick)
+            if time.monotonic() < retry_at.get(key, 0):
+                continue
+            retry_at[key] = time.monotonic() + 30
+            environment = flatpak_environment(pid, tick)
+            if environment is None:
+                continue
+            token = f"{pid}-{tick}-0"
+            try:
+                active = subprocess.run(("systemctl", "--user", "is-active", "--quiet",
+                                         f"mako-vrr-{token}.service"), env=environment,
+                                        timeout=2, check=False)
+                if active.returncode == 0:
+                    continue
+                subprocess.run((str(Path(__file__).resolve()), "--start",
+                                         str(pid), token), env=environment,
+                                        timeout=4, check=False)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        time.sleep(POLL_SECONDS)
+    return 0
+
+
 def main() -> int:
     arguments = sys.argv[1:]
+    if arguments == ["--watch-flatpak"]:
+        return watch_flatpak()
     starting = arguments[:1] == ["--start"]
     if starting:
         arguments = arguments[1:]

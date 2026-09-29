@@ -13,6 +13,32 @@
 #include <unistd.h>
 
 namespace mako::layer::present_diagnostics {
+void logBridgeTiming(const uint64_t bridgeId, const VkSwapchainKHR swapchain,
+        const BridgePresentTiming::Window& window,
+        const size_t outstanding, const uint64_t refreshCycleNs) {
+    std::ostringstream line;
+    line << "MAKO Renderer: present diagnostics: operation=gamescope-bridge-timing"
+         << " bridge=" << bridgeId << " pid=" << getpid()
+         << " swapchain=" << swapchain
+         << " timestamp_source=compositor-reported"
+         << " requests=" << window.requests << " feedbacks=" << window.feedbacks
+         << " outstanding=" << outstanding << " unmatched=" << window.unmatched
+         << " overwritten=" << window.overwritten << " discontinuities=" << window.discontinuities
+         << " requested_interval_samples=" << window.requestedInterval.count
+         << " requested_interval_mean_ms=" << window.requestedInterval.mean()
+         << " requested_interval_stddev_ms=" << window.requestedInterval.deviation()
+         << " requested_interval_max_ms=" << window.requestedInterval.maximum
+         << " reported_interval_samples=" << window.reportedInterval.count
+         << " reported_interval_mean_ms=" << window.reportedInterval.mean()
+         << " reported_interval_stddev_ms=" << window.reportedInterval.deviation()
+         << " reported_interval_max_ms=" << window.reportedInterval.maximum
+         << " lateness_mean_ms=" << window.lateness.mean()
+         << " lateness_max_ms=" << window.lateness.maximum
+         << " submit_lateness_mean_ms=" << window.submitLateness.mean()
+         << " submit_lateness_max_ms=" << window.submitLateness.maximum
+         << " refresh_cycle_ns=" << refreshCycleNs << '\n';
+    std::cerr << line.str();
+}
 namespace {
     std::atomic<uint32_t> nextContextSequence{1};
     thread_local uint64_t activeContextId{0};

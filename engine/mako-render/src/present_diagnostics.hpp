@@ -3,6 +3,7 @@
 #pragma once
 
 #include "adaptive_scheduler.hpp"
+#include "bridge_present_timing.hpp"
 
 #include <chrono>
 #include <cstddef>
@@ -22,6 +23,10 @@ namespace mako::layer::present_diagnostics {
     /// Return the process-start slow-operation threshold in milliseconds.
     [[nodiscard]] double thresholdMilliseconds();
     [[nodiscard]] Clock::time_point start();
+
+    void logBridgeTiming(uint64_t bridgeId, VkSwapchainKHR swapchain,
+        const BridgePresentTiming::Window& window,
+        size_t outstanding, uint64_t refreshCycleNs);
 
     class ContextScope {
     public:

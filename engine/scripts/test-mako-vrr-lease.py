@@ -5,6 +5,7 @@ from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 from pathlib import Path
 import io
+import fcntl
 import json
 import os
 import subprocess
@@ -22,6 +23,108 @@ loader.exec_module(module)
 
 
 class VrrLeaseTests(unittest.TestCase):
+    def test_namespace_publisher_requires_live_matching_kernel_lock(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "game-frame-generation-1.json"
+            pid = os.getpid()
+            tick = module.process_identity(pid)[1]
+            with path.with_name(path.name + ".lock").open("w") as lock:
+                self.assertIsNone(module.namespace_publisher(path, pid, tick, module.lock_owners()))
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                owners = module.lock_owners()
+                self.assertEqual(module.namespace_publisher(path, pid, tick, owners), pid)
+                self.assertIsNone(module.namespace_publisher(path, pid + 1, tick, owners))
+                self.assertIsNone(module.namespace_publisher(path, pid, tick + 1, owners))
+                fcntl.flock(lock, fcntl.LOCK_UN)
+                self.assertIsNone(module.namespace_publisher(path, pid, tick, module.lock_owners()))
+
+    def test_namespace_translation_retains_launch_and_profile_authorization(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary)
+            pid = os.getpid()
+            tick = module.process_identity(pid)[1]
+            record = {"pid": 99999999, "process_start_ticks": tick, "requested": {
+                "name": "Game", "gamescope_vrr_mode": "off",
+                "frame_generation_provisioned": True, "frame_generation_enabled": True}}
+            (path / "game-frame-generation-1.json").write_text(json.dumps(record))
+            with patch.object(module, "namespace_publisher", return_value=pid):
+                self.assertEqual(module.publishers(path), [module.Publisher(pid, tick, "off")])
+                self.assertEqual(module.active_mode(path, pid, tick, "unknown", set()), "off")
+                self.assertIsNone(module.active_mode(path, pid, tick + 1, "unknown", set()))
+
+    def test_untrusted_status_symlink_and_oversize_are_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "record.json"
+            path.write_text("{}")
+            link = Path(temporary) / "link.json"
+            link.symlink_to(path)
+            with self.assertRaises(OSError):
+                module.read_status(link)
+            path.write_text(" " * 65537)
+            with self.assertRaises(ValueError):
+                module.read_status(path)
+            fifo = Path(temporary) / "fifo.json"
+            os.mkfifo(fifo)
+            with self.assertRaises(ValueError):
+                module.read_status(fifo)
+
+    def test_flatpak_session_matches_compositor_and_filters_game_environment(self):
+        from unittest.mock import mock_open
+        import struct
+        payload = (b"DISPLAY=:1\0GAMESCOPE_WAYLAND_DISPLAY=gamescope-0\0"
+                   b"WAYLAND_DISPLAY=gamescope-0\0PATH=/bad\0LD_PRELOAD=/bad\0"
+                   b"HOME=/bad\0MAKO_CONFIG=/bad\0")
+        peer = Mock()
+        peer.getsockopt.return_value = struct.pack("3i", 101, os.geteuid(), 0)
+        connection = Mock()
+        connection.__enter__ = Mock(return_value=peer)
+        connection.__exit__ = Mock(return_value=False)
+        with patch.object(Path, "is_file", return_value=True), \
+             patch.object(Path, "stat", return_value=SimpleNamespace(st_uid=os.geteuid())), \
+             patch.object(Path, "open", mock_open(read_data=payload)), \
+             patch.object(module.socket, "socket", return_value=connection), \
+             patch.object(module, "xroot_properties", return_value={"GAMESCOPE_PID": 101}) as root, \
+             patch.object(module, "process_identity", return_value=(1, 42)), \
+             patch.object(module, "config_path", return_value=Path("/trusted/conf.toml")):
+            environment = module.flatpak_environment(20, 42)
+            self.assertEqual(environment["PATH"], "/usr/bin:/bin")
+            self.assertEqual(environment["MAKO_CONFIG"], "/trusted/conf.toml")
+            self.assertNotEqual(environment["HOME"], "/bad")
+            self.assertNotIn("LD_PRELOAD", environment)
+            root.return_value = {"GAMESCOPE_PID": 102}
+            self.assertIsNone(module.flatpak_environment(20, 42))
+            root.return_value = {"GAMESCOPE_PID": 101}
+            self.assertIsNone(module.flatpak_environment(20, 43))
+
+    def test_host_monitor_reuses_lease_and_retries_failed_service(self):
+        with patch.object(module, "STOP", False), \
+             patch.object(module.signal, "signal"), \
+             patch.object(module, "publishers", return_value=[module.Publisher(20, 42, "off")]), \
+             patch.object(module, "flatpak_environment", return_value={"PATH": "/usr/bin:/bin"}), \
+             patch.object(module.time, "monotonic", side_effect=[0, 0, 1, 30, 30]), \
+             patch.object(module.time, "sleep") as sleep, \
+             patch.object(module.subprocess, "run", side_effect=[
+                 SimpleNamespace(returncode=0), SimpleNamespace(returncode=3),
+                 SimpleNamespace(returncode=0)]) as run:
+            def stop_after_three(_seconds):
+                if sleep.call_count == 3:
+                    module.STOP = True
+            sleep.side_effect = stop_after_three
+            self.assertEqual(module.watch_flatpak(), 0)
+            self.assertEqual(run.call_count, 3)
+            self.assertEqual(run.call_args.args[0][-3:], ("--start", "20", "20-42-0"))
+
+    def test_follow_steam_does_not_start_a_flatpak_lease(self):
+        with patch.object(module, "STOP", False), \
+             patch.object(module.signal, "signal"), \
+             patch.object(module, "publishers", return_value=[module.Publisher(20, 42, "follow-steam")]), \
+             patch.object(module, "flatpak_environment") as session, \
+             patch.object(module.time, "sleep", side_effect=lambda _: setattr(module, "STOP", True)), \
+             patch.object(module.subprocess, "run") as run:
+            self.assertEqual(module.watch_flatpak(), 0)
+            session.assert_not_called()
+            run.assert_not_called()
+
     def test_decision_log_emits_only_on_state_changes(self):
         output = io.StringIO()
         with patch.object(module.sys, "stderr", output):

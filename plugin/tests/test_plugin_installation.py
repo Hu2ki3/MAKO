@@ -3,6 +3,7 @@
 import sys
 from types import SimpleNamespace
 import unittest
+from unittest.mock import AsyncMock
 
 
 class _Logger:
@@ -16,8 +17,14 @@ from py_modules.mako_plugin.plugin import Plugin  # noqa: E402
 
 
 class PluginInstallationTests(unittest.IsolatedAsyncioTestCase):
-    async def test_install_refreshes_existing_flatpak_runtimes(self):
+    def plugin(self):
         plugin = Plugin.__new__(Plugin)
+        plugin._start_flatpak_vrr_monitor = AsyncMock()
+        plugin._stop_flatpak_vrr_monitor = AsyncMock()
+        return plugin
+
+    async def test_install_refreshes_existing_flatpak_runtimes(self):
+        plugin = self.plugin()
         plugin.installation_service = SimpleNamespace(
             install=lambda: {
                 "success": True,
@@ -36,13 +43,15 @@ class PluginInstallationTests(unittest.IsolatedAsyncioTestCase):
         result = await plugin.install_mako()
 
         self.assertTrue(result["success"])
+        plugin._stop_flatpak_vrr_monitor.assert_awaited_once()
+        plugin._start_flatpak_vrr_monitor.assert_awaited_once()
         self.assertEqual(
             result["flatpak_extensions_updated"], ["24.08", "25.08"]
         )
         self.assertIn("refreshed Flatpak runtimes 24.08, 25.08", result["message"])
 
     async def test_flatpak_refresh_failure_keeps_host_install_successful(self):
-        plugin = Plugin.__new__(Plugin)
+        plugin = self.plugin()
         plugin.installation_service = SimpleNamespace(
             install=lambda: {
                 "success": True,
@@ -67,7 +76,7 @@ class PluginInstallationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Flatpak Setup", result["message"])
 
     async def test_failed_host_install_does_not_touch_flatpak(self):
-        plugin = Plugin.__new__(Plugin)
+        plugin = self.plugin()
         plugin.installation_service = SimpleNamespace(
             install=lambda: {
                 "success": False,
@@ -86,6 +95,8 @@ class PluginInstallationTests(unittest.IsolatedAsyncioTestCase):
         result = await plugin.install_mako()
 
         self.assertFalse(result["success"])
+        plugin._stop_flatpak_vrr_monitor.assert_not_called()
+        plugin._start_flatpak_vrr_monitor.assert_not_called()
         self.assertEqual(result["error"], "bad archive")
 
 

@@ -2,6 +2,7 @@
 
 #include "gamescope_scaling_surface.hpp"
 #include "presentation_policy.hpp"
+#include "present_diagnostics.hpp"
 
 #include <algorithm>
 #include <array>
@@ -148,6 +149,9 @@ struct GamescopeScalingSurface::Impl {
         uint32_t presentId{};
         OrderedPresentTimeline presentTimeline;
         std::optional<VkPresentModeKHR> compositorPresentMode;
+        std::unique_ptr<present_diagnostics::BridgePresentTiming> timing;
+        uint64_t diagnosticId{};
+        uint64_t refreshCycleNs{};
         ~Content() {
             if (owner)
                 owner->release(proxy);
@@ -366,9 +370,19 @@ struct GamescopeScalingSurface::Impl {
         return result;
     }
 
-    static void ignoreTiming(void*, wl_proxy*, uint32_t, uint32_t, uint32_t,
-            uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t) {}
-    static void ignoreRefresh(void*, wl_proxy*, uint32_t, uint32_t) {}
+    static void pastTiming(void* data, wl_proxy*, uint32_t id,
+            uint32_t desiredHi, uint32_t desiredLo, uint32_t actualHi, uint32_t actualLo,
+            uint32_t, uint32_t, uint32_t, uint32_t) {
+        auto& content = *static_cast<Content*>(data);
+        if (content.timing)
+            content.timing->feedback(id, (uint64_t{desiredHi} << 32) | desiredLo,
+                (uint64_t{actualHi} << 32) | actualLo);
+    }
+    static void refreshCycle(void* data, wl_proxy*, uint32_t hi, uint32_t lo) {
+        auto& content = *static_cast<Content*>(data);
+        if (content.timing)
+            content.refreshCycleNs = (uint64_t{hi} << 32) | lo;
+    }
     static void retired(void* data, wl_proxy*) {
         static_cast<Content*>(data)->retired = true;
     }
@@ -529,13 +543,17 @@ bool GamescopeScalingSurface::createSwapchain(
     content->owner = impl.get();
     content->compositorPresentMode = compositorPresentMode;
     content->refreshHz = refreshHz;
+    if (present_diagnostics::enabled()) {
+        content->timing = std::make_unique<present_diagnostics::BridgePresentTiming>();
+        content->diagnosticId = present_diagnostics::allocateContextId();
+    }
     wl_argument createArgs[2]{{.o = state.surface}, {.o = nullptr}};
     content->proxy = impl->marshal(
         impl->factory, 1, &impl->contentInterface, 1, 0, createArgs
     );
     static void (*contentListener[])(void){
-        reinterpret_cast<void (*)(void)>(Impl::ignoreTiming),
-        reinterpret_cast<void (*)(void)>(Impl::ignoreRefresh),
+        reinterpret_cast<void (*)(void)>(Impl::pastTiming),
+        reinterpret_cast<void (*)(void)>(Impl::refreshCycle),
         reinterpret_cast<void (*)(void)>(Impl::retired),
     };
     if (!content->proxy || impl->addListener(
@@ -725,7 +743,8 @@ bool GamescopeScalingSurface::preparePresent(
         return true;
     // Mesa's WSI dispatches the shared socket for its own event queue. Drain
     // only already-read association events here: no socket poll, roundtrip,
-    // timing history, allocation, or additional worker on the present path.
+    // allocation or additional worker on the present path. Opt-in diagnostics
+    // aggregate timing feedback in bounded storage allocated at creation.
     if (impl->dispatchPending(impl->display, impl->queue) < 0 ||
             impl->displayGetError(impl->display) != 0)
         return false;
@@ -775,6 +794,18 @@ bool GamescopeScalingSurface::preparePresent(
             {.u = static_cast<uint32_t>(ns)},
         };
         impl->marshal(content->second->proxy, 5, nullptr, 1, 0, timing);
+        if (content->second->timing) {
+            const auto nanos = [](const auto time) {
+                return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    time.time_since_epoch()).count());
+            };
+            const auto now = nanos(OrderedPresentTimeline::Clock::now());
+            auto& diagnostics = *content->second->timing;
+            diagnostics.request(content->second->presentId, ns, now, nanos(slot->submitAt));
+            if (const auto window = diagnostics.take(now))
+                present_diagnostics::logBridgeTiming(content->second->diagnosticId,
+                    swapchain, *window, diagnostics.outstanding(), content->second->refreshCycleNs);
+        }
     }
     if (impl->displayFlush(impl->display) < 0 && errno != EAGAIN)
         return false;
