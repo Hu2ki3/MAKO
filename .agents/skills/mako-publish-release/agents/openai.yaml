@@ -1,4 +1,4 @@
 interface:
   display_name: "Publish MAKO Release"
   short_description: "Publish matched Renderer and Decky releases"
-  default_prompt: "Use $mako-publish-release to prepare, publish, and verify the next matched MAKO release."
+  default_prompt: "Use $mako-publish-release to publish and verify the next matched MAKO release using its prepared release materials."

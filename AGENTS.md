@@ -139,6 +139,7 @@ Start with the root `README.md`, then read `engine/README.md` or `plugin/README.
 | Add or remove transitional compatibility | `CLEANUPS.md` | Owning migration/generator and its focused regression tests |
 | Deploy/reload a local Decky install | `plugin/docs/PACKAGING.md` | `plugin/scripts/deploy-dev.sh`, `plugin/scripts/reload-decky-plugin.mjs` |
 | Collect diagnostics | `COLLECT_DIAGNOSTICS.md` | `scripts/mako-diagnostics` |
+| Prepare release notes, artwork, and flavor text | `HOW_TO_RELEASE.md#notes-identity-and-artwork` | `.agents/skills/mako-prepare-release/SKILL.md` (`$mako-prepare-release`) |
 | Publish both components | `HOW_TO_RELEASE.md` | `scripts/publish-release.sh` |
 | Resume one component publish | `HOW_TO_RELEASE.md` | `engine/scripts/publish-package.sh`, `plugin/scripts/publish-package.sh` |
 

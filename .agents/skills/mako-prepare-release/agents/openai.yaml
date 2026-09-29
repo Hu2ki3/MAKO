@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prepare Release"
+  short_description: "Draft MAKO release notes, artwork, and flavor quotes"
+  default_prompt: "Use $mako-prepare-release to prepare both MAKO Renderer and MAKO Decky release notes from the current branch, with a capitalized codename, optimized artwork, and distinct flavor quotes, without publishing."
