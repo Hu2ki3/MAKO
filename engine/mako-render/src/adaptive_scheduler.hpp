@@ -650,20 +650,27 @@ namespace mako::layer {
             struct EfficiencyProbe {
                 std::optional<TimePoint> eligibleSince;
                 std::optional<TimePoint> evaluationAt;
-                std::optional<TimePoint> retryAt;
+                // A rejected lower load remains rejected through cadence
+                // interruptions, independently of experiments at other rungs.
+                std::array<std::optional<TimePoint>,
+                    GeneratedFramePlan::capacity> retryAt{};
                 GeneratedDeliveryWindow delivery;
                 size_t testedLimit{0};
                 double baselineBaseFps{0.0};
                 bool settlingGraceUsed{false};
 
-                void reset() {
+                void resetEvaluation() {
                     this->eligibleSince.reset();
                     this->evaluationAt.reset();
-                    this->retryAt.reset();
                     this->delivery.reset();
                     this->testedLimit = 0;
                     this->baselineBaseFps = 0.0;
                     this->settlingGraceUsed = false;
+                }
+
+                void reset() {
+                    this->resetEvaluation();
+                    this->retryAt.fill(std::nullopt);
                 }
             } efficiencyProbe;
 

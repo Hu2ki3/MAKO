@@ -3150,6 +3150,140 @@ namespace {
             "severe efficiency deficit did not retry after five-minute backoff");
     }
 
+    TimePoint rejectSmoothCadenceDownshift(Harness& harness, const double fps) {
+        harness.start();
+        const auto deadline = harness.now + 80s;
+        while (harness.now < deadline) {
+            const auto plan = harness.frameAtFps(fps);
+            harness.scheduler.reportGeneratedFrameDelivery({
+                .requested = plan.size(),
+                .acceptedForPresentation = plan.size(),
+            });
+            if (harness.diagnostics.contains("adaptive-efficiency-probe-rejected"))
+                return harness.now;
+        }
+        throw TestFailure{"precondition failed: downshift was not rejected"};
+    }
+
+    void testSmoothCadenceDownshiftBackoffSurvivesRepeatedDips() {
+        for (const uint32_t target : {60U, 90U, 120U}) {
+            for (const size_t multiplier : {3U, 4U, 5U}) {
+                for (const bool automaticCap : {false, true}) {
+                    Harness harness(target, multiplier, true,
+                        AdaptiveRecoveryPolicy::OrderedSdr, false, 2s,
+                        target, true, automaticCap);
+                    // Keep the 4x -> 3x result above the exact 75% boundary
+                    // so floating-point source intervals cannot select 300s.
+                    const double fps = 1.01 * target / multiplier;
+                    const auto rejectedAt = rejectSmoothCadenceDownshift(harness, fps);
+                    const auto retryDelay = multiplier == 3 ? 300s : 120s;
+                    const auto probes = harness.diagnostics.count("adaptive-efficiency-probe");
+                    for (size_t dip = 0; dip < 3; ++dip) {
+                        harness.runAtFps(fps * 0.85, 3s);
+                        require(!harness.scheduler.snapshot().stableCadenceLimit,
+                            "precondition failed: source dip retained constant cadence");
+                        harness.runAtFps(fps, 27s);
+                        require(harness.scheduler.snapshot().stableCadenceLimit == multiplier - 1,
+                            "source recovery did not requalify its useful multiplier");
+                        require(harness.diagnostics.count("adaptive-efficiency-probe") == probes,
+                            "cadence dip discarded rejected downshift backoff: target=" +
+                                std::to_string(target) + " multiplier=" + std::to_string(multiplier) +
+                                " automatic_cap=" + std::to_string(automaticCap));
+                    }
+                    const auto beforeRetry = rejectedAt + retryDelay - 1s;
+                    harness.runAtFps(fps, beforeRetry - harness.now);
+                    require(harness.diagnostics.count("adaptive-efficiency-probe") == probes,
+                        "downshift retried before its original deadline");
+                    harness.runAtFps(fps, 8s);
+                    require(harness.diagnostics.count("adaptive-efficiency-probe") > probes,
+                        "cadence recovery extended the original retry deadline indefinitely");
+                }
+            }
+        }
+    }
+
+    void testSmoothCadenceDownshiftBackoffSurvivesInterruptions() {
+        for (const bool automaticCap : {false, true}) {
+            for (const auto interruption : {"stall", "focus", "transport"}) {
+                Harness harness(120, 3, true, AdaptiveRecoveryPolicy::OrderedSdr,
+                    false, 2s, 120, true, automaticCap);
+                rejectSmoothCadenceDownshift(harness, 40.0);
+                const auto probes = harness.diagnostics.count("adaptive-efficiency-probe");
+                if (std::string_view(interruption) == "stall") {
+                    harness.frame(300ms);
+                } else if (std::string_view(interruption) == "focus") {
+                    harness.now += 1s;
+                    harness.scheduler.resumeAfterExternalInterruption(harness.now, true);
+                } else {
+                    harness.scheduler.beginTransportRecovery(harness.now, false);
+                }
+                while (harness.scheduler.historyWarmupActive()) {
+                    harness.now += 25ms;
+                    harness.scheduler.consumeHistoryWarmupFrame(harness.now);
+                }
+                harness.runAtFps(40.0, 40s);
+                require(harness.scheduler.snapshot().stableCadenceLimit == 2,
+                    "interruption did not recover the useful 3x cadence");
+                require(harness.diagnostics.count("adaptive-efficiency-probe") == probes,
+                    "interruption cleared rejected downshift backoff: " +
+                        std::string(interruption));
+            }
+        }
+    }
+
+    void testSmoothCadenceDownshiftBackoffIsScopedToMultiplier() {
+        for (const bool automaticCap : {false, true}) {
+            Harness harness(120, 5, true, AdaptiveRecoveryPolicy::OrderedSdr,
+                false, 2s, 120, true, automaticCap);
+            rejectSmoothCadenceDownshift(harness, 40.4);
+            const auto rejectedAt = harness.now;
+            const auto originalProbes = harness.diagnostics.count("adaptive-efficiency-probe");
+            require(harness.diagnostics.last("adaptive-efficiency-probe-rejected")->testedLimit == 1,
+                "precondition failed: initial rejection was not 3x -> 2x");
+            harness.runAtFps(24.24, 60s);
+            const auto* nextProbe = harness.diagnostics.last("adaptive-efficiency-probe");
+            require(nextProbe && nextProbe->testedLimit == 3,
+                "failed 3x -> 2x probe blocked an independent 5x -> 4x probe");
+            require(harness.now - rejectedAt < 300s,
+                "independent probe check outlasted the original cooldown");
+            harness.runAtFps(40.4, 40s);
+            require(harness.scheduler.snapshot().stableCadenceLimit == 2,
+                "source improvement did not recover a useful 3x cadence");
+            size_t twoXProbes = 0;
+            for (const auto& event : harness.diagnostics.events) {
+                if (event.operation == "adaptive-efficiency-probe" && event.testedLimit == 1)
+                    ++twoXProbes;
+            }
+            require(twoXProbes == originalProbes,
+                "probing a different multiplier erased the previous rung's rejection");
+        }
+    }
+
+    void testSmoothCadenceDownshiftBackoffAllowsProvenSourceRecovery() {
+        for (const bool automaticCap : {false, true}) {
+            Harness harness(120, 3, true, AdaptiveRecoveryPolicy::OrderedSdr,
+                false, 2s, 120, true, automaticCap);
+            rejectSmoothCadenceDownshift(harness, 40.0);
+            const auto rejectedAt = harness.now;
+            const auto probes = harness.diagnostics.count("adaptive-efficiency-probe");
+            // Ordinary constant-cadence requalification keeps its existing
+            // 15s retry; it must not inherit the failed experiment's 300s.
+            const auto recoveredPlan = harness.runAtFps(60.0, 25s);
+            require(harness.scheduler.snapshot().stableCadenceLimit == 1 &&
+                    recoveredPlan.size() == 1,
+                "rejected experiment prevented independently qualified 2x recovery");
+            require(harness.diagnostics.count("adaptive-efficiency-probe") == probes,
+                "source recovery unnecessarily launched another lower-load experiment");
+            harness.runAtFps(119.0, 8s);
+            require(harness.scheduler.snapshot().nearTargetNativePreference,
+                "precondition failed: sustained native source did not reach target");
+            harness.runAtFps(40.0, 40s);
+            require(harness.now - rejectedAt < 300s &&
+                    harness.diagnostics.count("adaptive-efficiency-probe") > probes,
+                "proven native recovery retained obsolete lower-load rejection");
+        }
+    }
+
     void testSmoothCadenceModerateDownshiftDeficitBacksOffTwoMinutes() {
         Harness harness(
             120, 5, true, AdaptiveRecoveryPolicy::OrderedSdr
@@ -4175,6 +4309,10 @@ int main() {
         {"Smooth Cadence accepts target-preserving downshift", testSmoothCadenceDownshiftsWhenLowerLoadPreservesTarget},
         {"Smooth Cadence lets promising downshift recovery settle", testSmoothCadenceDownshiftAllowsPromisingRecoveryToSettle},
         {"Smooth Cadence rejects insufficient downshift", testSmoothCadenceRejectsInsufficientDownshiftAndBacksOff},
+        {"Smooth Cadence downshift backoff survives repeated dips", testSmoothCadenceDownshiftBackoffSurvivesRepeatedDips},
+        {"Smooth Cadence downshift backoff survives interruptions", testSmoothCadenceDownshiftBackoffSurvivesInterruptions},
+        {"Smooth Cadence downshift backoff is scoped to multiplier", testSmoothCadenceDownshiftBackoffIsScopedToMultiplier},
+        {"Smooth Cadence downshift backoff allows proven source recovery", testSmoothCadenceDownshiftBackoffAllowsProvenSourceRecovery},
         {"Smooth Cadence moderate downshift deficit backs off", testSmoothCadenceModerateDownshiftDeficitBacksOffTwoMinutes},
         {"Smooth Cadence downshift rejects delivery pressure", testSmoothCadenceDownshiftRejectsDeliveryPressure},
         {"Smooth Cadence downshift pauses during acquire backoff", testSmoothCadenceDownshiftPausesDuringAcquireBackoff},

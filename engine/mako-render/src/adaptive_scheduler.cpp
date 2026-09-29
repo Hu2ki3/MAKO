@@ -339,20 +339,10 @@ void AdaptiveScheduler::consumeHistoryWarmupFrame(const TimePoint frameStarted) 
     if (this->state.historyWarmup.remaining == 0)
         return;
 
-    // Transport recovery invalidates cadence samples but does not invalidate
-    // evidence that a lower Smooth Cadence multiplier was insufficient. Keep
-    // that retry deadline so an unrelated acquire/present recovery cannot
-    // turn a five-minute backoff into a new probe five seconds later. Ordinary
-    // non-recovery warm-up still clears it because a cadence or lifecycle
-    // change may represent a genuinely different performance regime.
-    const auto retainedEfficiencyRetryAt = this->state.historyWarmup.recovery
-        ? this->state.efficiencyProbe.retryAt : std::nullopt;
     this->state.historyWarmup.remaining--;
     if (this->state.historyWarmup.remaining == 0)
         this->state.historyWarmup.recovery = false;
     this->resetTiming(frameStarted);
-    if (retainedEfficiencyRetryAt)
-        this->state.efficiencyProbe.retryAt = retainedEfficiencyRetryAt;
 }
 
 void AdaptiveScheduler::reportGeneratedFrameDelivery(
@@ -1226,7 +1216,7 @@ MAKO_ADAPTIVE_STAGE_INLINE void AdaptiveScheduler::advanceEfficiencyProbe(
             this->state.ramp.previousLimit = testedLimit;
             this->state.ramp.targetDeficitSince.reset();
             this->state.acceptedLoadBaseline = {};
-            probe.retryAt.reset();
+            probe.retryAt[testedLimit - 1].reset();
         } else {
             // Resume the retained qualified multiplier on this same decision
             // and scale the retry interval with the measured deficit. A near
@@ -1247,7 +1237,7 @@ MAKO_ADAPTIVE_STAGE_INLINE void AdaptiveScheduler::advanceEfficiencyProbe(
                         adaptiveEfficiencyProbeModerateDeficitRetryDelay;
                 }
             }
-            probe.retryAt = now + retryDelay;
+            probe.retryAt[testedLimit - 1] = now + retryDelay;
         }
         probe.testedLimit = 0;
         probe.baselineBaseFps = 0.0;
@@ -1271,15 +1261,16 @@ MAKO_ADAPTIVE_STAGE_INLINE void AdaptiveScheduler::advanceEfficiencyProbe(
     if (!eligible) {
         probe.eligibleSince.reset();
         if (!this->state.stableCadence.limit)
-            probe.reset();
+            probe.resetEvaluation();
         return;
     }
-    if (probe.retryAt && now < *probe.retryAt) {
+    const size_t currentLimit = *this->state.stableCadence.limit;
+    auto& retryAt = probe.retryAt[currentLimit - 2];
+    if (retryAt && now < *retryAt) {
         probe.eligibleSince.reset();
         return;
     }
 
-    const size_t currentLimit = *this->state.stableCadence.limit;
     const double currentOutputFps = baseFps *
         static_cast<double>(currentLimit + 1);
     if (currentOutputFps <
@@ -1298,7 +1289,7 @@ MAKO_ADAPTIVE_STAGE_INLINE void AdaptiveScheduler::advanceEfficiencyProbe(
     probe.baselineBaseFps = baseFps;
     probe.evaluationAt = now + adaptiveEfficiencyProbeEvaluationDuration;
     probe.eligibleSince.reset();
-    probe.retryAt.reset();
+    retryAt.reset();
     probe.delivery.reset();
     probe.settlingGraceUsed = false;
     this->state.nativeCadenceProbe.reset();
@@ -1962,7 +1953,10 @@ void AdaptiveScheduler::resetTiming(
     this->state.outputPlanner.resetTargetClock();
     this->state.nativeCadenceProbe.reset();
     this->state.nearTargetNativePreference.resetCandidate();
-    this->state.efficiencyProbe.reset();
+    // Fresh timing/history does not prove that a rejected lower workload now
+    // reaches the target. Keep its original deadline through stalls and
+    // warm-up; a new scheduler or confirmed native recovery clears it.
+    this->state.efficiencyProbe.resetEvaluation();
     this->state.pacingWindow.reset();
 }
 
@@ -2032,7 +2026,7 @@ void AdaptiveScheduler::restoreGenerationLimit(
     this->state.acceptedLoadBaseline.baseFps = monitorRestoredLoad
         ? monitoredBaselineBaseFps
         : 0.0;
-    this->state.efficiencyProbe.reset();
+    this->state.efficiencyProbe.resetEvaluation();
     this->state.nearTargetNativePreference.reset();
     this->state.outputPlanner.resetTargetClock();
 
@@ -2328,8 +2322,6 @@ void AdaptiveScheduler::beginTransportRecovery(
     // for one second at native cadence, optionally resume the proven lower
     // level and delay the next higher probe. Keep unrelated efficiency-probe
     // backoff intact.
-    const auto retainedEfficiencyRetryAt =
-        this->state.efficiencyProbe.retryAt;
     // The caller sets classifyGeneratedLoadFailure only for direct transport
     // evidence such as headroom failure during a higher-load evaluation or a
     // qualified native-drain probe.
@@ -2394,8 +2386,6 @@ void AdaptiveScheduler::beginTransportRecovery(
             retryDelay
         );
     }
-    if (retainedEfficiencyRetryAt)
-        this->state.efficiencyProbe.retryAt = retainedEfficiencyRetryAt;
 }
 
 bool AdaptiveScheduler::rejectActiveRampForTransportMiss(
