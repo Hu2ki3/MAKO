@@ -4,6 +4,12 @@
 
 ### Release codename: Inferno
 
+> _“They thought the sea would quench the fire. Then the mako rose.”_
+>
+> **Captain Matteo Veyr, _Chronicles of the Last Fleet_**
+
+---
+
 Inferno brings managed shaders to MAKO Renderer. Native and Flatpak builds bundle MAKO's vkBasalt fork for 64-bit and 32-bit games alongside Frame Generation and Scaling.
 
 - **Shaders and effect stacks:** Build ordered per-profile stacks with sharpening, anti-aliasing, DLS denoise, and curated colour and cinematic effects. Managed changes apply live; advanced vkBasalt and ReShade-compatible chains load on the next launch.

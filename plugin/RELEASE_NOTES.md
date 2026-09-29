@@ -4,6 +4,12 @@
 
 ### Release codename: Inferno
 
+> _“The flames painted the sea in colors no sailor had a name for.”_
+>
+> **Captain Matteo Veyr, _Chronicles of the Last Fleet_**
+
+---
+
 MAKO Decky 4.0 adds per-game shaders and ordered effect stacks through MAKO's managed vkBasalt fork. Install MAKO Renderer from the plugin to get the matching layer; a separate vkBasalt installation is unnecessary.
 
 - **Shaders and effects:** Profiles offer sharpening, anti-aliasing, 20% default DLS denoise, and curated colour, contrast, cinematic, and retro effects, including new Clarity and Levels Plus shaders. Combine effects in your chosen order; each extra pass can increase GPU cost. Native 64-bit and 32-bit games and prepared Flatpak apps are supported.
