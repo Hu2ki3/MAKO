@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstring>
@@ -9,6 +11,39 @@
 #include <vulkan/vulkan_core.h>
 
 namespace mako::layer {
+
+    [[nodiscard]] inline bool rendererOwnsDisplayTiming(
+            const VkDeviceCreateInfo& createInfo,
+            const bool gamescopeWsiEligible, const bool extensionSupported) {
+        if (!gamescopeWsiEligible || !extensionSupported)
+            return false;
+        for (uint32_t i = 0; i < createInfo.enabledExtensionCount; ++i) {
+            const char* name = createInfo.ppEnabledExtensionNames[i];
+            if (std::strcmp(name, VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME) == 0 ||
+                    std::strcmp(name, "VK_EXT_present_timing") == 0)
+                return false;
+        }
+        return true;
+    }
+
+    // Consume only MAKO-owned feedback. Query the available count first:
+    // older WSI implementations erase the supplied capacity, rather than the
+    // returned count. Storage and calls are bounded even on those versions.
+    [[nodiscard]] inline bool discardOwnedDisplayTiming(
+            const PFN_vkGetPastPresentationTimingGOOGLE query,
+            const VkDevice device, const VkSwapchainKHR swapchain) {
+        if (!query)
+            return false;
+        uint32_t count = 0;
+        if (query(device, swapchain, &count, nullptr) != VK_SUCCESS)
+            return false;
+        if (count == 0)
+            return true;
+        std::array<VkPastPresentationTimingGOOGLE, 128> feedback{};
+        count = std::min(count, static_cast<uint32_t>(feedback.size()));
+        const auto result = query(device, swapchain, &count, feedback.data());
+        return result == VK_SUCCESS || result == VK_INCOMPLETE;
+    }
 
     // VK_KHR_swapchain_maintenance1 promoted the EXT extension without
     // changing its structure layouts or sType values. Freedesktop 23.08's

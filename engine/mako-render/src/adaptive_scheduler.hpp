@@ -561,6 +561,7 @@ namespace mako::layer {
             struct NativeCadenceProbe {
                 std::optional<TimePoint> nextAt;
                 bool active{false};
+                bool qualifyingNearTarget{false};
                 double baselineBaseFps{0.0};
                 double minimumMeasuredBaseFps{0.0};
                 size_t confirmedSamples{0};
@@ -568,6 +569,7 @@ namespace mako::layer {
                 void reset() {
                     this->nextAt.reset();
                     this->active = false;
+                    this->qualifyingNearTarget = false;
                     this->baselineBaseFps = 0.0;
                     this->minimumMeasuredBaseFps = 0.0;
                     this->confirmedSamples = 0;

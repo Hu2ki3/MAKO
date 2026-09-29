@@ -121,6 +121,11 @@ Swapchain::Swapchain(const vk::Vulkan& vk, backend::Instance* backend,
         )),
         scalingShaderDll(scalingShaderDll),
         profile(std::move(profile)), info(std::move(info)) {
+    if (this->info.gamescopeDisplayTiming) {
+        this->wsiPresentTimingQuery = reinterpret_cast<
+            PFN_vkGetPastPresentationTimingGOOGLE>(vk.fi().GetDeviceProcAddr(
+                vk.dev(), "vkGetPastPresentationTimingGOOGLE"));
+    }
     this->diagnosticsState.contextId = allocateDiagnosticsContextId();
     this->runtimeStatusPublisher = RuntimeStatusPublisher(
         this->diagnosticsState.contextId, layerRoleName

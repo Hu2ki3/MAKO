@@ -1474,6 +1474,25 @@ AdaptiveScheduler::advanceNativeCadenceProbe(
     // generated-plus-original present. The opt-in probe removes generated
     // work for one frame, then requires a short faster run before rebasing.
     // A rejected probe immediately resumes the proven generated policy.
+    auto& probe = this->state.nativeCadenceProbe;
+    if (probe.qualifyingNearTarget) {
+        // The native sample already proved a real cadence rise. Keep that
+        // measurement free of sparse generated FIFO work until the existing
+        // near-target hold qualifies it. Otherwise that work can hide the
+        // recovered source again before the hold has enough evidence.
+        if (baseFps >= this->config.targetFps *
+                adaptiveNearTargetNativeMinimumOutputRatio &&
+                this->state.nearTargetNativePreference.candidateActive.value_or(false)) {
+            this->state.outputPlanner.resetTargetClock();
+            generatedFrameCount = 0;
+            return {};
+        }
+        probe.reset();
+        probe.nextAt = now + this->config.dynamicCadenceProbeInterval;
+        this->state.nearTargetNativePreference.resetCandidate();
+        return {.planningReady = true};
+    }
+
     const bool eligible =
         this->config.recoveryPolicy == AdaptiveRecoveryPolicy::OrderedSdr &&
         desiredOutputsPerRealFrame > 1.0 &&
@@ -1489,7 +1508,6 @@ AdaptiveScheduler::advanceNativeCadenceProbe(
         return {.planningReady = true};
     }
 
-    auto& probe = this->state.nativeCadenceProbe;
     if (probe.active) {
         const bool fasterCadence = instantaneousBaseFps >=
             probe.baselineBaseFps * adaptiveNativeCadenceMinimumRiseRatio;
@@ -1547,7 +1565,11 @@ AdaptiveScheduler::advanceNativeCadenceProbe(
             recoveredBaseFps,
             probe.confirmedSamples
         );
-        probe.active = false;
+        probe.qualifyingNearTarget = this->config.nearTargetNativePreference &&
+            recoveredBaseFps >= this->config.targetFps *
+                adaptiveNearTargetNativeMinimumOutputRatio &&
+            recoveredBaseFps < this->config.targetFps;
+        probe.active = probe.qualifyingNearTarget;
         probe.baselineBaseFps = 0.0;
         probe.minimumMeasuredBaseFps = 0.0;
         probe.confirmedSamples = 0;
@@ -1599,7 +1621,8 @@ AdaptiveScheduler::advanceNearTargetNativePreference(
             this->state.stableCadence.limit ||
             this->state.stableCadence.evaluationAt ||
             this->state.efficiencyProbe.evaluationAt ||
-            this->state.nativeCadenceProbe.active) {
+            (this->state.nativeCadenceProbe.active &&
+             !this->state.nativeCadenceProbe.qualifyingNearTarget)) {
         preference.resetCandidate();
         return preference.active;
     }

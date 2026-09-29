@@ -3749,6 +3749,55 @@ namespace {
             "recovered native target cadence continued generating frames");
     }
 
+    void testDynamicCadenceQualifiesNearTargetWithoutGeneratedFeedback() {
+        for (const uint32_t target : {60U, 90U, 120U, 144U}) {
+            Harness harness(target, 2, false,
+                AdaptiveRecoveryPolicy::OrderedSdr, true, 100ms);
+            harness.start();
+            auto previous = harness.runAtFps(target / 2.0, 8s);
+            const auto recoveredAt = harness.now;
+            // A single sparse generated output can put the next application
+            // frame back on FIFO's two-refresh ladder. Native qualification
+            // must finish while measuring the source without that feedback.
+            while (harness.now - recoveredAt < 5s) {
+                previous = harness.deliveredFrameAtFps(
+                    previous.empty() ? target * (119.0 / 120.0) : target / 2.0);
+            }
+            require(harness.scheduler.snapshot().nearTargetNativePreference &&
+                    previous.empty(),
+                "native probe reintroduced sparse FIFO work before near-target qualification");
+            require(harness.diagnostics.count(
+                    "adaptive-near-target-native-enabled") == 1,
+                "near-target native probe did not settle exactly once");
+            harness.runAtFps(target / 2.0, 4s);
+            require(!harness.scheduler.snapshot().nearTargetNativePreference &&
+                    harness.scheduler.snapshot().validatedGenerationLimit == 1,
+                "qualified native cadence stranded a later genuine source drop");
+        }
+    }
+
+    void testDynamicCadenceAbortsUnqualifiedNearTargetRise() {
+        Harness harness(120, 2, false,
+            AdaptiveRecoveryPolicy::OrderedSdr, true, 100ms);
+        harness.start();
+        auto previous = harness.runAtFps(60.0, 8s);
+        const auto riseAt = harness.now;
+        while (!harness.diagnostics.contains("dynamic-cadence-recovered")) {
+            previous = harness.deliveredFrameAtFps(previous.empty() ? 119.0 : 60.0);
+            require(harness.now - riseAt < 1s,
+                "near-target abort test never obtained a native sample");
+        }
+        harness.runAtFps(119.0, 200ms);
+        require(harness.scheduler.snapshot().nativeCadenceProbeActive &&
+                !harness.scheduler.snapshot().nearTargetNativePreference,
+            "short native sample bypassed the existing preference hold");
+        harness.runAtFps(60.0, 500ms);
+        require(!harness.scheduler.snapshot().nearTargetNativePreference &&
+                !harness.diagnostics.contains("adaptive-near-target-native-enabled") &&
+                harness.frameAtFps(60.0).size() == 1,
+            "failed native qualification suppressed a genuinely slower source");
+    }
+
     void testDynamicCadenceBoundsSelfHiddenRecoveryLatency() {
         Harness harness(
             60, 2, false, AdaptiveRecoveryPolicy::OrderedSdr, true
@@ -4526,6 +4575,8 @@ int main() {
         {"persistent loss rejects Smooth Cadence", testPersistentDeliveryLossRejectsSmoothCadenceProbe},
         {"Smooth Cadence exits after native recovery", testSmoothCadenceReturnsToTargetAfterBaseRecovery},
         {"dynamic cadence recovers a self-hidden native rate", testDynamicCadenceRecoversSelfHiddenNativeRateIncrease},
+        {"dynamic cadence aborts unqualified near-target rise", testDynamicCadenceAbortsUnqualifiedNearTargetRise},
+        {"dynamic cadence qualifies near-target without generated feedback", testDynamicCadenceQualifiesNearTargetWithoutGeneratedFeedback},
         {"dynamic cadence bounds self-hidden recovery latency", testDynamicCadenceBoundsSelfHiddenRecoveryLatency},
         {"dynamic cadence probe interval updates live", testDynamicCadenceProbeIntervalUpdatesLive},
         {"dynamic cadence rejects true 30 FPS", testDynamicCadenceProbeRejectsTrueThirtyFpsCadence},

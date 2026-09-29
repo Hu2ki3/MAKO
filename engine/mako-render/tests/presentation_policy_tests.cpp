@@ -1025,6 +1025,46 @@ int main() {
         }
     }
 
+    // Equal early/late timestamp noise must not slowly drain a full Fixed
+    // multiplier. Check the settled tail so startup rounding is not mistaken
+    // for a recurring skip, across refresh rates and every supported rung.
+    for (const uint32_t refreshHz : {60U, 90U, 120U, 144U}) {
+        for (size_t multiplier = 2; multiplier <= 5; ++multiplier) {
+            for (const double jitterSeconds : {0.0001, 0.0005, 0.001}) {
+                budget.reset();
+                (void)budget.plan(start, refreshHz, multiplier - 1);
+                size_t tailSkipped = 0;
+                for (size_t frame = 1; frame <= 2400; ++frame) {
+                    const double seconds =
+                        static_cast<double>(frame * multiplier) / refreshHz +
+                        (frame % 2 ? jitterSeconds : 0.0);
+                    const auto when = start + std::chrono::duration_cast<
+                        std::chrono::steady_clock::duration>(
+                            std::chrono::duration<double>(seconds));
+                    const size_t count = budget.plan(when, refreshHz, multiplier - 1);
+                    if (frame > 1200)
+                        tailSkipped += multiplier - 1 - count;
+                }
+                expect(tailSkipped == 0,
+                    "balanced timestamp jitter drained the Fixed refresh budget");
+            }
+        }
+    }
+
+    // A slow period may leave one output of credit, not a multi-frame bank
+    // capable of defeating the display ceiling after a source-rate increase.
+    budget.reset();
+    for (size_t frame = 0; frame <= 100; ++frame)
+        (void)budget.plan(start + frame * 100ms, 120, 1);
+    generated = 0;
+    for (size_t frame = 1; frame <= 1000; ++frame) {
+        const size_t count = budget.plan(start + 10s + frame * 10ms, 120, 1);
+        if (frame > 100)
+            generated += count;
+    }
+    expect(generated >= 179 && generated <= 181,
+        "slow-source timing credit defeated the later display budget");
+
     std::cout << "presentation policy tests passed\n";
     return 0;
 }

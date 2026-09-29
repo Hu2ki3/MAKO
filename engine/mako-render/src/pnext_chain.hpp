@@ -41,6 +41,18 @@ namespace mako::layer {
 #endif
     }
 
+    [[nodiscard]] inline bool hasPresentTiming(const void* chain) {
+        while (chain) {
+            VkBaseInStructure node{};
+            std::memcpy(&node, chain, sizeof(node));
+            if (node.sType == VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_GOOGLE ||
+                    node.sType == detail::presentTimingsInfoExtType)
+                return true;
+            chain = node.pNext;
+        }
+        return false;
+    }
+
     /// Build a lower-facing VkSwapchainCreateInfoKHR pNext chain without
     /// modifying any caller-owned input node. Gamescope normally puts the
     /// maintenance1 present-mode node at the head, but a legal caller may put

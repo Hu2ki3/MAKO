@@ -184,6 +184,24 @@ namespace {
 }
 
 int main() {
+    const VkPresentTimesInfoGOOGLE googleTiming{
+        .sType = VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_GOOGLE,
+    };
+    const detail::PresentTimingsInfoExtLayout extTiming{
+        .sType = detail::presentTimingsInfoExtType,
+    };
+    VkPresentIdKHR timingPrefix{
+        .sType = VK_STRUCTURE_TYPE_PRESENT_ID_KHR,
+        .pNext = &googleTiming,
+    };
+    expect(hasPresentTiming(&timingPrefix),
+        "upstream Google timing was hidden behind an ID prefix");
+    timingPrefix.pNext = &extTiming;
+    expect(hasPresentTiming(&timingPrefix),
+        "upstream EXT timing was hidden behind an ID prefix");
+    timingPrefix.pNext = nullptr;
+    expect(!hasPresentTiming(&timingPrefix) && !hasPresentTiming(nullptr),
+        "ordinary present metadata incorrectly claimed timing ownership");
 #if defined(VK_KHR_present_id2)
     testPresentId2Prefix();
 #endif

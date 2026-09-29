@@ -897,6 +897,7 @@ void Root::modifyInstanceCreateInfo(VkInstanceCreateInfo& createInfo,
 
 void Root::modifyDeviceCreateInfo(VkDeviceCreateInfo& createInfo,
         const char* const swapchainMaintenance1Extension,
+        const bool gamescopeDisplayTiming,
         const std::function<void(void)>& finish) const {
     if (!this->frameGenerationInteropProvisioned()) {
         finish();
@@ -912,6 +913,8 @@ void Root::modifyDeviceCreateInfo(VkDeviceCreateInfo& createInfo,
     };
     if (swapchainMaintenance1Extension)
         requiredExtensions.push_back(swapchainMaintenance1Extension);
+    if (gamescopeDisplayTiming)
+        requiredExtensions.push_back(VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME);
     auto extensions = add_extensions(
         createInfo.ppEnabledExtensionNames,
         createInfo.enabledExtensionCount,

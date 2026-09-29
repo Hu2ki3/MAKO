@@ -65,6 +65,7 @@ namespace {
         std::unordered_map<VkDevice, vk::Vulkan> devices;
         std::unordered_set<VkDevice> nativeDevices;
         std::unordered_set<VkDevice> presentRetirementDevices;
+        std::unordered_set<VkDevice> gamescopeTimingDevices;
         struct QueueIdentity {
             VkDevice device{VK_NULL_HANDLE};
             uint32_t familyIndex{UINT32_MAX};
@@ -418,6 +419,26 @@ namespace {
         return selected;
     }
 
+    bool supportedGamescopeDisplayTiming(const VkPhysicalDevice physicalDevice,
+            const VkDeviceCreateInfo& createInfo) {
+        if (!rendererOwnsDisplayTiming(createInfo,
+                layer_info->root.gamescopeWsiTimingProvisioned(), true))
+            return false;
+        uint32_t count{};
+        if (instance_info->funcs.EnumerateDeviceExtensionProperties(
+                physicalDevice, nullptr, &count, nullptr) != VK_SUCCESS)
+            return false;
+        std::vector<VkExtensionProperties> extensions(count);
+        if (instance_info->funcs.EnumerateDeviceExtensionProperties(
+                physicalDevice, nullptr, &count, extensions.data()) != VK_SUCCESS)
+            return false;
+        extensions.resize(count);
+        return std::ranges::any_of(extensions, [](const auto& extension) {
+            return std::string_view(extension.extensionName) ==
+                VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME;
+        });
+    }
+
     // create instance
     VkResult myvkCreateInstance(
             const VkInstanceCreateInfo* info,
@@ -661,6 +682,8 @@ namespace {
                 physdev, *info, scalingEngineProvisioned
             )
             : std::nullopt;
+        const bool gamescopeDisplayTiming = presentationDevice &&
+            supportedGamescopeDisplayTiming(physdev, *info);
         bool presentRetirementEnabled = false;
         bool lowerDeviceCreated = false;
         const auto rollbackCreatedDevice = [&]() noexcept {
@@ -688,6 +711,7 @@ namespace {
             layer_info->root.modifyDeviceCreateInfo(
                 newInfo,
                 swapchainMaintenance1Extension.value_or(nullptr),
+                gamescopeDisplayTiming,
                 [&, newInfo = &newInfo]() {
                     presentRetirementEnabled =
                         swapchainMaintenance1Enabled(*newInfo);
@@ -712,6 +736,8 @@ namespace {
 
         if (presentRetirementEnabled)
             instance_info->presentRetirementDevices.insert(*device);
+        if (gamescopeDisplayTiming)
+            instance_info->gamescopeTimingDevices.insert(*device);
 
         // No game profile matched when this device was created. Keep only the
         // layer lifecycle hooks needed to chain and clean up correctly; all
@@ -736,6 +762,7 @@ namespace {
                 layerDeviceInserted = false;
             }
             instance_info->presentRetirementDevices.erase(*device);
+            instance_info->gamescopeTimingDevices.erase(*device);
         };
         try {
             if (!layerQueueFamily) {
@@ -847,6 +874,7 @@ namespace {
         );
         instance_info->nativeDevices.erase(device);
         instance_info->presentRetirementDevices.erase(device);
+        instance_info->gamescopeTimingDevices.erase(device);
 
         // destroy device
         auto vkDestroyDevice = reinterpret_cast<PFN_vkDestroyDevice>(
@@ -2371,6 +2399,8 @@ namespace {
                 .gamescopeScalingSurface = instance_info->scalingSurfaces &&
                         instance_info->scalingSurfaces->owns(info->surface)
                     ? instance_info->scalingSurfaces.get() : nullptr,
+                .gamescopeDisplayTiming =
+                    instance_info->gamescopeTimingDevices.contains(device),
                 .format = newInfo.imageFormat,
                 .colorSpace = newInfo.imageColorSpace,
                 .requestedMinImageCount = info->minImageCount,

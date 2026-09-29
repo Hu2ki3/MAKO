@@ -96,6 +96,12 @@ namespace mako::layer {
                 this->presentationEnvironment.gamescopeWsiDisabled;
         }
 
+        [[nodiscard]] bool gamescopeWsiTimingProvisioned() const {
+            return this->frameGenerationInteropProvisioned() &&
+                this->gamescopeDetected &&
+                !this->presentationEnvironment.gamescopeWsiDisabled;
+        }
+
         /// ensure the layer is up-to-date
         /// @param forceConfigurationPoll bypass the present-path polling
         /// interval at an application-owned swapchain creation boundary
@@ -110,9 +116,11 @@ namespace mako::layer {
         /// modify device create info
         /// @param createInfo original create info
         /// @param swapchainMaintenance1Extension optional supported spelling
+        /// @param gamescopeDisplayTiming enable MAKO-owned WSI output timestamps
         /// @param finish function to call after modification
         void modifyDeviceCreateInfo(VkDeviceCreateInfo& createInfo,
             const char* swapchainMaintenance1Extension,
+            bool gamescopeDisplayTiming,
             const std::function<void(void)>& finish) const;
 
         /// modify swapchain create info

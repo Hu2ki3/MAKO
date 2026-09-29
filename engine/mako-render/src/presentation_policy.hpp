@@ -1285,10 +1285,12 @@ namespace mako::layer {
                 this->smoothedIntervalSeconds =
                     this->smoothedIntervalSeconds * 0.75 + rawInterval * 0.25;
 
-            const double desiredOutputs = std::clamp(
+            // Retain both sides of timestamp jitter. Clipping late intervals
+            // at the multiplier while charging every early interval slowly
+            // drains the budget even when the average source rate fits exactly.
+            const double desiredOutputs = std::max(
                 this->smoothedIntervalSeconds * static_cast<double>(*refreshHz),
-                1.0,
-                static_cast<double>(maximumGeneratedFrames + 1)
+                1.0
             );
             this->outputCredit += desiredOutputs;
             const size_t requestedOutputs = std::max<size_t>(
@@ -1300,8 +1302,10 @@ namespace mako::layer {
             this->outputCredit -= static_cast<double>(generated + 1);
             if (this->outputCredit < 0.0)
                 this->outputCredit = 0.0;
-            if (generated == maximumGeneratedFrames && this->outputCredit >= 1.0)
-                this->outputCredit = std::fmod(this->outputCredit, 1.0);
+            // Carry at most one output of timing credit, never a backlog from
+            // a slow source. It can absorb jitter without authorizing an
+            // extended overshoot when the source accelerates.
+            this->outputCredit = std::min(this->outputCredit, 1.0);
             // Keep the display budget warm for a later policy change, but
             // retain full Fixed output under ordered FIFO pacing.
             return fullMultiplierCadence ? maximumGeneratedFrames : generated;

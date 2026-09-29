@@ -37,7 +37,49 @@ using namespace mako::layer::present_detail;
 
 VkResult Swapchain::queuePresentWithRetirementFence(
         const vk::Vulkan& vk, const VkQueue queue,
-        const VkPresentInfoKHR& presentInfo) {
+        const VkPresentInfoKHR& incomingPresentInfo) {
+    VkPresentInfoKHR presentInfo = incomingPresentInfo;
+    VkPresentTimeGOOGLE presentTime{};
+    VkPresentTimesInfoGOOGLE presentTimes{
+        .sType = VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_GOOGLE,
+        .pNext = presentInfo.pNext,
+        .swapchainCount = 1,
+        .pTimes = &presentTime,
+    };
+    if (this->wsiPresentTimingQuery && this->privateOrderedTransport &&
+            !this->info.gamescopeScalingSurface &&
+            presentInfo.swapchainCount == 1 &&
+            !hasPresentTiming(presentInfo.pNext) &&
+            this->gamescopeRefreshHz.value_or(0) > 0) {
+        const auto slot = this->wsiPresentTimeline.schedule(
+            DiagnosticsClock::now(),
+            gamescopeBridgeOutputFps(this->profile, *this->gamescopeRefreshHz),
+            *this->gamescopeRefreshHz, this->bridgeOutputBatchSize);
+        if (slot) {
+            // Google timing creates feedback even when diagnostics are off.
+            // Drain our namespace in bounded batches so old WSI versions
+            // cannot retain a history proportional to session length.
+            if (++this->wsiTimingPresentsSinceDrain >= 32) {
+                this->wsiTimingPresentsSinceDrain = 0;
+                if (!discardOwnedDisplayTiming(this->wsiPresentTimingQuery,
+                        vk.dev(), presentInfo.pSwapchains[0])) {
+                    this->wsiPresentTimingQuery = nullptr;
+                    return this->queuePresentWithRetirementFence(
+                        vk, queue, incomingPresentInfo);
+                }
+            }
+            std::this_thread::sleep_until(slot->submitAt);
+            presentTime.desiredPresentTime = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    slot->presentAt.time_since_epoch()).count());
+            presentInfo.pNext = &presentTimes;
+            if (!this->wsiPresentTimingLogged) {
+                std::cerr << "MAKO Renderer: Gamescope WSI ordered output timing enabled; "
+                             "owner=renderer; transport=VK_GOOGLE_display_timing\n";
+                this->wsiPresentTimingLogged = true;
+            }
+        }
+    }
     this->lastLowerPresentRetirementProtected = false;
     // The protocol mode applies to one surface commit. Preparing only the
     // application's outer present would leave the remaining generated/real

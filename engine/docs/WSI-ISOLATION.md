@@ -31,6 +31,8 @@ Application / Proton translation
 
 The lower MAKO role performs no presentation-time GPU work. Reconstruction stays in the upper role so there is one resource and scheduling owner. An FG-only Gamescope WSI compatibility launch uses the upper MAKO role followed by WSI without the lower spatial role.
 
+For ordered SDR through the optional WSI chain, MAKO enables `VK_GOOGLE_display_timing` only when the lower chain advertises it and the application has enabled neither Google nor EXT presentation timing. Every generated and real output then receives a separate future timestamp from the same bounded timeline used by the isolated scaling bridge. WSI remains the surface/protocol owner; MAKO does not open a second Wayland connection. Application-owned timing, HDR, unavailable capabilities and the isolated bridge retain their existing paths. MAKO drains only its own feedback namespace every 32 outputs, with a count query and at most 128 records per drain, so older WSI implementations cannot accumulate session-length timing history. Failure to read that owned feedback disables this timing path.
+
 ## Default managed launch
 
 Standalone `mako-launch` and MAKO Decky's generated wrapper establish the normal boundary before `vkCreateInstance`:

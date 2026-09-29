@@ -45,6 +45,9 @@ namespace mako::layer {
         // Borrowed from the instance owner, whose surface and connection
         // outlive Vulkan swapchain retirement. Null for ordinary/WSI surfaces.
         GamescopeScalingSurface* gamescopeScalingSurface{nullptr};
+        // Enabled only when the lower chain advertises display timing and the
+        // application has not selected its own timing-feedback namespace.
+        bool gamescopeDisplayTiming{false};
         VkFormat format;
         VkColorSpaceKHR colorSpace;
         // Preserve the application's requested minimum separately from the
@@ -441,6 +444,10 @@ namespace mako::layer {
         // Actual scheduled batch, including the real image; never the user's
         // unproven maximum multiplier. Reset before native/history fallbacks.
         size_t bridgeOutputBatchSize{1};
+        OrderedPresentTimeline wsiPresentTimeline;
+        PFN_vkGetPastPresentationTimingGOOGLE wsiPresentTimingQuery{nullptr};
+        uint32_t wsiTimingPresentsSinceDrain{0};
+        bool wsiPresentTimingLogged{false};
         SmoothCadenceBaseCap smoothCadenceBaseCap;
         SmoothCadencePacerHandoff smoothCadencePacerHandoff;
         // A null-old replacement loses the driver's explicit WSI lineage.

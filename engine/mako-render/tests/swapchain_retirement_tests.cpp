@@ -19,6 +19,24 @@ namespace {
             std::exit(1);
         }
     }
+    uint32_t pendingTimings = 0;
+    uint32_t timingCalls = 0;
+    bool timingQueryFails = false;
+    VkResult VKAPI_CALL queryTiming(VkDevice, VkSwapchainKHR, uint32_t* count,
+            VkPastPresentationTimingGOOGLE* output) {
+        ++timingCalls;
+        if (timingQueryFails)
+            return VK_ERROR_SURFACE_LOST_KHR;
+        if (!output) {
+            expect(*count == 0, "timing enumeration supplied a stale count");
+            *count = pendingTimings;
+            return VK_SUCCESS;
+        }
+        expect(*count <= pendingTimings && *count <= 128,
+            "feedback drain exceeded available records or bounded storage");
+        pendingTimings -= *count;
+        return pendingTimings ? VK_INCOMPLETE : VK_SUCCESS;
+    }
 }
 
 int main() {
@@ -33,6 +51,37 @@ int main() {
     expect(!selectSwapchainMaintenance1Extension(true, true, false) &&
             !selectSwapchainMaintenance1Extension(false, false, true),
         "maintenance1 was selected without both extension and feature support");
+
+    const VkDeviceCreateInfo untimedDevice{
+        .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+    };
+    expect(rendererOwnsDisplayTiming(untimedDevice, true, true) &&
+            !rendererOwnsDisplayTiming(untimedDevice, false, true) &&
+            !rendererOwnsDisplayTiming(untimedDevice, true, false),
+        "WSI timing did not require both runtime eligibility and capability");
+    for (const char* extension : {VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME,
+            "VK_EXT_present_timing"}) {
+        auto appTimedDevice = untimedDevice;
+        appTimedDevice.enabledExtensionCount = 1;
+        appTimedDevice.ppEnabledExtensionNames = &extension;
+        expect(!rendererOwnsDisplayTiming(appTimedDevice, true, true),
+            "MAKO took an application's timing-feedback namespace");
+    }
+    for (const uint32_t pending : {0U, 1U, 127U, 128U, 10000U}) {
+        pendingTimings = pending;
+        timingCalls = 0;
+        expect(discardOwnedDisplayTiming(queryTiming, VK_NULL_HANDLE,
+                VK_NULL_HANDLE), "bounded timing drain rejected valid feedback");
+        expect(timingCalls == (pending ? 2U : 1U) &&
+                pendingTimings == (pending > 128 ? pending - 128 : 0),
+            "timing drain looped, over-erased or left available bounded feedback");
+    }
+    timingCalls = 0;
+    timingQueryFails = true;
+    expect(!discardOwnedDisplayTiming(nullptr, VK_NULL_HANDLE, VK_NULL_HANDLE) &&
+            !discardOwnedDisplayTiming(queryTiming, VK_NULL_HANDLE, VK_NULL_HANDLE) &&
+            timingCalls == 1,
+        "failed timing feedback did not stop bounded ownership");
 
     const std::array<const char*, 1> swapchainExtensions{
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
