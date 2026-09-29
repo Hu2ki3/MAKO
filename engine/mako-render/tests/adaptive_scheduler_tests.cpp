@@ -327,6 +327,23 @@ namespace {
             ), acquireBackoff);
         }
 
+        AdaptiveFramePlan deliveredFrameAtFps(const double fps,
+                const std::optional<bool> delivered = true) {
+            this->now += std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::duration<double>(1.0 / fps)
+            );
+            if (this->scheduler.historyWarmupActive()) {
+                this->scheduler.consumeHistoryWarmupFrame(this->now);
+                return {};
+            }
+            auto plan = this->scheduler.planFrame(this->now, false);
+            if (delivered)
+                this->scheduler.reportGeneratedFrameDelivery({
+                    plan.size(), *delivered ? plan.size() : 0,
+                });
+            return plan;
+        }
+
         AdaptiveFramePlan runAtFps(const double fps,
                 const std::chrono::nanoseconds duration) {
             AdaptiveFramePlan result;
@@ -2684,6 +2701,188 @@ namespace {
         }
     }
 
+    void testMenuReturnRequalifiesChangedSceneAcrossModes() {
+        for (const uint32_t target : {60u, 90u, 120u}) {
+            for (const size_t priorMultiplier : {2u, 3u, 4u}) {
+                for (const bool steady : {false, true}) {
+                    for (const bool smooth : {false, true}) {
+                        Harness harness(target, 5, smooth,
+                            AdaptiveRecoveryPolicy::OrderedSdr, false,
+                            2s, target, true, steady);
+                        const double sourceFps = double(target) / priorMultiplier;
+                        harness.start();
+                        harness.runAtFps(sourceFps, 15s);
+                        require(harness.scheduler.validatedGenerationLimit() ==
+                                priorMultiplier - 1,
+                            "precondition failed: menu test has wrong validated load");
+                        const auto ramps = harness.diagnostics.count("ramp");
+                        harness.now += 2s;
+                        harness.scheduler.resumeAfterExternalInterruption(
+                            harness.now, true
+                        );
+                        const auto returnedAt = harness.now;
+                        while (harness.now - returnedAt < 4s)
+                            harness.deliveredFrameAtFps(sourceFps * 0.8);
+                        require(harness.diagnostics.count("ramp") == ramps,
+                            "changed menu scene skipped recovery promotion delay");
+                        while (harness.now - returnedAt < 15s)
+                            harness.deliveredFrameAtFps(sourceFps * 0.8);
+                        require(harness.scheduler.validatedGenerationLimit() >
+                                priorMultiplier - 1,
+                            "healthy changed scene was stranded at pre-menu multiplier");
+                        require(harness.diagnostics.contains("adaptive-rearm-ready"),
+                            "fresh lower-load requalification was not observable");
+                    }
+                }
+            }
+        }
+    }
+
+    void testMenuReturnDoesNotInventTargetProof() {
+        Harness harness(120, 3, false, AdaptiveRecoveryPolicy::OrderedSdr);
+        harness.start();
+        for (size_t frame = 0; frame < 1000 &&
+                harness.scheduler.validatedGenerationLimit() == 0; ++frame)
+            harness.deliveredFrameAtFps(45.0);
+        require(harness.scheduler.validatedGenerationLimit() == 1,
+            "precondition failed: below-target menu needs validated 2x");
+        harness.now += 2s;
+        harness.scheduler.resumeAfterExternalInterruption(harness.now, true);
+        for (size_t frame = 0; frame < 45 * 12; ++frame)
+            harness.deliveredFrameAtFps(45.0);
+        require(harness.scheduler.validatedGenerationLimit() == 2,
+            "a workload that never met target was treated as target-proven");
+        require(!harness.diagnostics.contains("adaptive-rearm-ready"),
+            "below-target menu unnecessarily required stale-baseline requalification");
+    }
+
+    void testLowerLoadRequalificationCoexistsWithNativeProbes() {
+        for (const auto interval : {100ms, 500ms, 1000ms, 1500ms, 2000ms, 3000ms}) {
+            Harness harness(120, 3, false, AdaptiveRecoveryPolicy::OrderedSdr,
+                true, interval, 120, false);
+            harness.start();
+            for (size_t frame = 0; frame < 60 * 15; ++frame)
+                harness.deliveredFrameAtFps(60.0);
+            require(harness.scheduler.validatedGenerationLimit() == 1,
+                "precondition failed: native-probe menu test needs proven 2x");
+            harness.now += 2s;
+            harness.scheduler.resumeAfterExternalInterruption(harness.now, true);
+            const auto returnedAt = harness.now;
+            auto deliveredEvidence = AdaptiveScheduler::Clock::duration{};
+            bool checkedEvidence = false;
+            for (size_t frame = 0; frame < 45 * 20; ++frame) {
+                const auto previousAt = harness.now;
+                const auto plan = harness.deliveredFrameAtFps(45.0);
+                const auto frameDuration = harness.now - previousAt;
+                // Only delivered 2x work after the existing five-second
+                // higher-trial delay may pay for the requalification window.
+                if (harness.now >= returnedAt + 5s && plan.size() == 1)
+                    deliveredEvidence += frameDuration;
+                if (!checkedEvidence &&
+                        harness.diagnostics.contains("adaptive-rearm-ready")) {
+                    require(deliveredEvidence + 2 * frameDuration >=
+                            AdaptiveScheduler::stableRearmDuration(),
+                        "intentional native probes counted as delivered lower-load evidence");
+                    checkedEvidence = true;
+                }
+            }
+            require(checkedEvidence,
+                "native sampling never completed lower-load requalification");
+            require(harness.scheduler.validatedGenerationLimit() == 2,
+                "periodic native sampling prevented fresh lower-load qualification");
+        }
+    }
+
+    void testLowerLoadRequalificationNeedsContinuousEvidence() {
+        for (const auto delivered : {std::optional<bool>{false},
+                std::optional<bool>{}}) {
+            Harness harness(120, 3, false, AdaptiveRecoveryPolicy::OrderedSdr);
+            harness.start();
+            harness.runAtFps(60.0, 12s);
+            const auto ramps = harness.diagnostics.count("ramp");
+            harness.now += 2s;
+            harness.scheduler.resumeAfterExternalInterruption(harness.now, true);
+            for (size_t frame = 0; frame < 45 * 15; ++frame)
+                harness.deliveredFrameAtFps(45.0,
+                    frame % 30 == 0 ? delivered : std::optional<bool>{true});
+            require(harness.diagnostics.count("ramp") == ramps,
+                "missing or failed delivery qualified a stale lower-load baseline");
+            // Continually changing load cannot be mistaken for settled evidence.
+            const auto changingAt = harness.now;
+            while (harness.now - changingAt < 10s) {
+                const auto seconds = std::chrono::duration_cast<
+                    std::chrono::seconds>(harness.now - changingAt).count();
+                harness.deliveredFrameAtFps(seconds % 2 ? 45.0 : 30.0);
+            }
+            require(harness.diagnostics.count("ramp") == ramps,
+                "moving source qualified a stable lower-load baseline");
+            for (size_t frame = 0; frame < 45 * 12; ++frame)
+                harness.deliveredFrameAtFps(frame % 2 ? 44.0 : 46.0);
+            require(harness.scheduler.validatedGenerationLimit() == 2,
+                "delivery recovery with normal source jitter remained stuck");
+        }
+    }
+
+    void testFailedHigherLoadRequalifiesChangedScene() {
+        for (const uint32_t multiplier : {3u, 4u, 5u}) {
+            for (const bool steady : {false, true}) {
+                for (const bool smooth : {false, true}) {
+                    for (const bool usefulRetry : {false, true}) {
+                        Harness harness(120, multiplier, smooth,
+                            AdaptiveRecoveryPolicy::OrderedSdr, false,
+                            2s, 120, true, steady);
+                        const double originalFps = 120.0 / (multiplier - 0.5);
+                        harness.start();
+                        for (size_t frame = 0; frame < 5000; ++frame) {
+                            const auto snapshot = harness.scheduler.snapshot();
+                            if (snapshot.rampEvaluationActive &&
+                                    snapshot.generationLimit == multiplier - 1)
+                                break;
+                            harness.deliveredFrameAtFps(originalFps);
+                        }
+                        require(harness.scheduler.snapshot().rampEvaluationActive &&
+                                harness.scheduler.snapshot().generationLimit == multiplier - 1,
+                            "precondition failed: final higher-load trial did not start");
+                        for (size_t frame = 0; frame < 500 &&
+                                harness.scheduler.snapshot().rampEvaluationActive; ++frame)
+                            harness.deliveredFrameAtFps(originalFps * 0.65);
+                        require(harness.scheduler.validatedGenerationLimit() == multiplier - 2,
+                            "precondition failed: harmful higher load was accepted");
+                        const auto failedAt = harness.now;
+                        const double changedFps = originalFps * 0.8;
+                        while (harness.now - failedAt < 4s)
+                            harness.deliveredFrameAtFps(changedFps);
+                        require(!harness.scheduler.snapshot().rampEvaluationActive,
+                            "new scene bypassed failed-probe cooldown");
+                        for (size_t frame = 0; frame < 2000 &&
+                                !harness.scheduler.snapshot().rampEvaluationActive; ++frame)
+                            harness.deliveredFrameAtFps(changedFps);
+                        require(harness.scheduler.snapshot().rampEvaluationActive,
+                            "new delivered baseline could not retry the higher multiplier");
+                        for (size_t frame = 0; frame < 500 &&
+                                harness.scheduler.snapshot().rampEvaluationActive; ++frame)
+                            harness.deliveredFrameAtFps(
+                                changedFps * (usefulRetry ? 1.0 : 0.65));
+                        const auto* result = harness.diagnostics.last("ramp-result");
+                        require(result && result->accepted == usefulRetry,
+                            "rebased retry bypassed adjacent workload comparison");
+                        if (!usefulRetry) {
+                            const auto* backoff = harness.diagnostics.last("ramp-backoff");
+                            require(backoff && backoff->previousLimit == 2,
+                                "requalification erased failed-probe backoff history");
+                            const auto ramps = harness.diagnostics.count("ramp");
+                            const auto retryFailedAt = harness.now;
+                            while (harness.now - retryFailedAt < 14s)
+                                harness.deliveredFrameAtFps(changedFps);
+                            require(harness.diagnostics.count("ramp") == ramps,
+                                "rejected fresh trial ignored its longer retry delay");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     AdaptiveFramePlan frameAfterFocusReturn(Harness& harness,
             const std::chrono::milliseconds interval) {
         harness.now += interval;
@@ -4298,6 +4497,11 @@ int main() {
         {"Adaptive higher load needs meaningful net gain", testAdaptiveHigherLoadNeedsMeaningfulNetGain},
         {"confirmed focus return has bounded fast resume", testConfirmedFocusReturnBoundedFastResume},
         {"menu return holds target-proven lower load", testMenuReturnHoldsTargetProvenLowerMultiplier},
+        {"menu return requalifies changed scene across modes", testMenuReturnRequalifiesChangedSceneAcrossModes},
+        {"menu return does not invent target proof", testMenuReturnDoesNotInventTargetProof},
+        {"lower-load requalification coexists with native probes", testLowerLoadRequalificationCoexistsWithNativeProbes},
+        {"lower-load requalification needs continuous evidence", testLowerLoadRequalificationNeedsContinuousEvidence},
+        {"failed higher load requalifies changed scene", testFailedHigherLoadRequalifiesChangedScene},
         {"focus return retains conservative fallbacks", testFocusReturnRetainsConservativeFallbacks},
         {"fast focus return retains history and transport settling", testFastFocusReturnCannotBypassHistoryOrTransportSettling},
         {"confirmed focus return retains proven generation", testConfirmedFocusReturnRetainsProvenLevel},

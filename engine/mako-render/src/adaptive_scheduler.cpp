@@ -347,6 +347,16 @@ void AdaptiveScheduler::consumeHistoryWarmupFrame(const TimePoint frameStarted) 
 
 void AdaptiveScheduler::reportGeneratedFrameDelivery(
         const GeneratedFrameDelivery delivery) {
+    auto& lowerLoad = this->state.ramp.lowerLoadSample;
+    if (lowerLoad.since) {
+        if (delivery.requested > 0 &&
+                delivery.acceptedForPresentation >= delivery.requested) {
+            lowerLoad.deliveryObserved = true;
+        } else if (delivery.requested != 0 ||
+                !this->state.nativeCadenceProbe.active) {
+            lowerLoad.reset();
+        }
+    }
     if (delivery.requested == 0)
         return;
     if (this->state.ramp.evaluationAt) {
@@ -1720,13 +1730,29 @@ AdaptiveFramePlan AdaptiveScheduler::planFrame(
         const std::chrono::steady_clock::time_point now,
         const bool generatedImageAcquireBackoff,
         const std::optional<size_t> orderedFifoGenerationLimit) {
+    // Wall time alone cannot qualify a lower workload. An intentional native
+    // probe pauses the delivered-work clock; any other missing observation
+    // breaks continuity. Short probe intervals must not starve qualification.
+    auto& lowerLoad = this->state.ramp.lowerLoadSample;
+    if (!lowerLoad.deliveryObserved) {
+        if (lowerLoad.since && this->state.nativeCadenceProbe.active &&
+                this->state.cadence.lastRealFrame &&
+                now >= *this->state.cadence.lastRealFrame) {
+            *lowerLoad.since += now - *this->state.cadence.lastRealFrame;
+        } else {
+            lowerLoad.reset();
+        }
+    }
+    lowerLoad.deliveryObserved = false;
     if (this->diagnosticsActive)
         this->state.pacingWindow.beginFrame();
     const auto cadence = this->observeCadence(
         now, generatedImageAcquireBackoff
     );
-    if (!cadence.planningReady)
+    if (!cadence.planningReady) {
+        lowerLoad.reset();
         return cadence.terminalPlan;
+    }
     const double baseFps = cadence.baseFps;
 
     const auto discontinuity = this->advanceDiscontinuityRecovery(
@@ -1936,6 +1962,7 @@ AdaptiveScheduler::Clock::duration AdaptiveScheduler::stableRearmDuration() {
 
 void AdaptiveScheduler::resetTiming(
         const std::chrono::steady_clock::time_point now) {
+    this->state.ramp.lowerLoadSample.reset();
     this->state.cadence.lastRealFrame = now;
     this->state.cadence.smoothedIntervalSeconds = 0.0;
     this->state.cadence.dropFrames = 0;
@@ -2289,7 +2316,10 @@ void AdaptiveScheduler::resumeAfterExternalInterruption(
     // The caller's transport and fence guards still apply.
     const bool fastResume = confirmedReturn && retainedLimit > 0 &&
         this->config.recoveryPolicy == AdaptiveRecoveryPolicy::OrderedSdr;
-    if (fastResume && retainedBaseFps > 0.0) {
+    const bool retainedLoadMetTarget = retainedBaseFps *
+        static_cast<double>(retainedLimit + 1) >=
+        static_cast<double>(this->config.targetFps) * adaptiveTargetSatisfiedRatio;
+    if (fastResume && retainedLoadMetTarget) {
         // Keep the proven lower-load measurement through the bounded recovery
         // interval. A temporarily slow return must not lower the comparison
         // baseline and make extra generated work look beneficial.
@@ -2413,6 +2443,7 @@ MAKO_ADAPTIVE_STAGE_INLINE void AdaptiveScheduler::updateGenerationLimit(
     );
 
     if (this->state.rearm.required) {
+        this->state.ramp.lowerLoadSample.reset();
         // The stabilization phase itself remains real-frame-only. Once it has
         // completed, retain the last proven level while the failed higher
         // probe cools down instead of dropping frame generation altogether.
@@ -2477,6 +2508,7 @@ MAKO_ADAPTIVE_STAGE_INLINE void AdaptiveScheduler::updateGenerationLimit(
     // A validated constant cadence already supplies the desired smoothness.
     // Do not probe a higher generated-frame level until it becomes unsuitable.
     if (this->state.stableCadence.limit) {
+        this->state.ramp.lowerLoadSample.reset();
         this->state.menuReturnLoadGuard.reset();
         this->state.ramp.targetDeficitSince.reset();
         return;
@@ -2591,6 +2623,7 @@ MAKO_ADAPTIVE_STAGE_INLINE void AdaptiveScheduler::updateGenerationLimit(
 
     if (this->advanceNearTargetNativePreference(
             now, baseFps, configuredLimit)) {
+        this->state.ramp.lowerLoadSample.reset();
         this->state.menuReturnLoadGuard.reset();
         this->state.ramp.targetDeficitSince.reset();
         return;
@@ -2609,6 +2642,7 @@ MAKO_ADAPTIVE_STAGE_INLINE void AdaptiveScheduler::updateGenerationLimit(
         static_cast<double>(this->config.targetFps) *
             adaptiveTargetSatisfiedRatio;
     if (targetSatisfied) {
+        this->state.ramp.lowerLoadSample.reset();
         this->state.menuReturnLoadGuard.reset();
         this->state.ramp.targetDeficitSince.reset();
         this->state.ramp.targetConstraintSince.reset();
@@ -2616,24 +2650,15 @@ MAKO_ADAPTIVE_STAGE_INLINE void AdaptiveScheduler::updateGenerationLimit(
         return;
     }
 
-    // A multiplier which reached the target before a confirmed menu visit is
-    // the last workload proven healthy for this game state. If the game comes
-    // back below that target, adding generated work can turn a recoverable
-    // source-cadence drop into sustained GPU/transport pressure. Hold the
-    // proven level until it reaches the configured target once; subsequent
-    // gameplay deficits then follow the ordinary adjacent-workload policy.
+    // Preserve the pre-menu load while a return is unsettled. A changed game
+    // scene need not ever recover that old FPS, so fresh lower-load evidence
+    // can also release the hold after the ordinary recovery delay below.
     const bool awaitingMenuReturnTargetRecovery =
         this->state.menuReturnLoadGuard.active &&
         this->state.outputPlanner.generationLimit ==
             this->state.menuReturnLoadGuard.provenGenerationLimit;
-    if (awaitingMenuReturnTargetRecovery) {
-        this->state.ramp.targetDeficitSince.reset();
-        this->state.ramp.targetConstraintSince.reset();
-        this->state.ramp.targetConstraintReported = false;
-        return;
-    }
-
     if (this->state.outputPlanner.generationLimit >= configuredLimit) {
+        this->state.ramp.lowerLoadSample.reset();
         this->state.menuReturnLoadGuard.reset();
         this->state.ramp.targetDeficitSince.reset();
         if (!this->state.ramp.targetConstraintSince) {
@@ -2654,6 +2679,7 @@ MAKO_ADAPTIVE_STAGE_INLINE void AdaptiveScheduler::updateGenerationLimit(
     this->state.ramp.targetConstraintSince.reset();
     this->state.ramp.targetConstraintReported = false;
     if (!this->state.ramp.targetDeficitSince) {
+        this->state.ramp.lowerLoadSample.reset();
         this->state.ramp.targetDeficitSince = now;
         return;
     }
@@ -2666,15 +2692,60 @@ MAKO_ADAPTIVE_STAGE_INLINE void AdaptiveScheduler::updateGenerationLimit(
         this->state.ramp.consecutiveFailures > 0 &&
         this->state.ramp.lastFailedLimit == nextLimit &&
         this->state.ramp.failedBaselineBaseFps > 0.0;
-    const double retryBaselineBaseFps = failedRampPending
+    double retryBaselineBaseFps = failedRampPending
         ? this->state.ramp.failedBaselineBaseFps : 0.0;
     const bool failedLoadRecovered = retryBaselineBaseFps <= 0.0 ||
         baseFps >= retryBaselineBaseFps;
-    if (!failedLoadRecovered)
-        return;
 
-    if (this->state.ramp.nextAt && now < *this->state.ramp.nextAt)
+    auto& lowerLoad = this->state.ramp.lowerLoadSample;
+    if (this->state.ramp.nextAt && now < *this->state.ramp.nextAt) {
+        lowerLoad.reset();
         return;
+    }
+
+    if (awaitingMenuReturnTargetRecovery || !failedLoadRecovered) {
+        // Use the existing cadence qualification envelope and rearm interval.
+        // A missing/failed delivery, timing reset, or moving source breaks the
+        // sample. Neither elapsed cooldown nor one lucky frame replaces proof.
+        const double minimumBaseFps = lowerLoad.since
+            ? std::min(lowerLoad.minimumBaseFps, baseFps) : baseFps;
+        const double maximumBaseFps = lowerLoad.since
+            ? std::max(lowerLoad.maximumBaseFps, baseFps) : baseFps;
+        if (!lowerLoad.since || maximumBaseFps > minimumBaseFps *
+                adaptiveStableCadenceMaximumCandidateSpreadRatio) {
+            lowerLoad.since = now;
+            lowerLoad.minimumBaseFps = baseFps;
+            lowerLoad.maximumBaseFps = baseFps;
+        } else {
+            lowerLoad.minimumBaseFps = minimumBaseFps;
+            lowerLoad.maximumBaseFps = maximumBaseFps;
+        }
+        if (now - *lowerLoad.since < adaptiveStableRearmDuration)
+            return;
+
+        const double oldBaselineBaseFps = std::max(
+            retryBaselineBaseFps,
+            awaitingMenuReturnTargetRecovery
+                ? this->state.menuReturnLoadGuard.baselineBaseFps : 0.0
+        );
+        retryBaselineBaseFps = lowerLoad.maximumBaseFps;
+        this->diagnostics->rearm(
+            "adaptive-rearm-ready",
+            awaitingMenuReturnTargetRecovery ? "menu-return" : "ramp-rejected",
+            this->state.ramp.consecutiveFailures,
+            this->state.outputPlanner.generationLimit,
+            Clock::duration::zero(),
+            oldBaselineBaseFps,
+            retryBaselineBaseFps,
+            "stable-target-deficit-rebased"
+        );
+        this->state.menuReturnLoadGuard.reset();
+        if (failedRampPending)
+            this->state.ramp.failedBaselineBaseFps = retryBaselineBaseFps;
+        // Keep failure counts and their backoff; the next actual trial must
+        // still earn its real-frame cost and pass the delivery test.
+    }
+    lowerLoad.reset();
 
     this->state.ramp.previousLimit = this->state.outputPlanner.generationLimit;
     this->state.ramp.baselineBaseFps = std::max(

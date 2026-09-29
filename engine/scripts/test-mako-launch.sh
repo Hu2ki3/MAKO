@@ -21,6 +21,10 @@ test_data_home="$test_root/data"
 test_config_home="$test_root/config"
 mkdir -p "$test_data_home" "$test_config_home"
 export XDG_CONFIG_HOME="$test_config_home"
+# The fake Gamescope names below must not resolve to a live compositor socket
+# when this portable test runs alongside a real Gym session.
+export XDG_RUNTIME_DIR="$test_root/runtime"
+mkdir -m 700 "$XDG_RUNTIME_DIR"
 expected_layer_path="$install_prefix/share/mako-render/vulkan/implicit_layer.d"
 if [[ ! -d "$expected_layer_path" && -d "$test_data_home/mako-render/vulkan/implicit_layer.d" ]]; then
     expected_layer_path="$test_data_home/mako-render/vulkan/implicit_layer.d"
