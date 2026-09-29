@@ -25,6 +25,7 @@ The rollback set consists of explicit file paths. It does not restore the direct
 | Owner | Responsibility |
 | --- | --- |
 | [installation.py](plugin/py_modules/mako_plugin/installation.py) | `InstallationService.install()`, payload validation and selection, `_decky_renderer_files()`, configuration preparation, native identity and coexistence |
+| [layer_manifests.py](plugin/py_modules/mako_plugin/layer_manifests.py) | Shared native manifest resolution for installation owner detection and direct development deployment |
 | [managed_files.py](plugin/py_modules/mako_plugin/managed_files.py) | Atomic copy/text replacement, permissions, backup acquisition, rollback and retained recovery backups |
 | [base_service.py](plugin/py_modules/mako_plugin/base_service.py) and [constants.py](plugin/py_modules/mako_plugin/constants.py) | Decky user-home resolution and managed destination paths; schema-owned identities come from [shared_config.py](plugin/shared_config.py) |
 | [configuration.py](plugin/py_modules/mako_plugin/configuration.py), [profile_storage.py](plugin/py_modules/mako_plugin/profile_storage.py), and [wrapper_generation.py](plugin/py_modules/mako_plugin/wrapper_generation.py) | Canonical profile/sidecar reads and wrapper generation consumed by installation |
@@ -45,6 +46,8 @@ At the default user-local prefix, Decky stores libraries under `~/.local/share/m
 | `~/.local/share/mako-render/installer/installed-files.sha256` | Standalone relative-path ownership record, with hashes of installed content after desktop-entry rewriting |
 
 `InstallationService._active_manifest_owner()` resolves the private Frame Generation manifest's library path to determine which managed payload it selects. `check_installation()` checks agreement with the selected owner, required files, host support and wrapper presence before reporting installation/update state; an identity file alone is insufficient. Legacy identity readers and their removal gates remain in [CLEANUPS.md](CLEANUPS.md).
+
+Direct development deployment uses the same manifest resolver to update the selected native owner and verify the libraries actually selected by private and registered manifests. It retains package identity and standalone ownership records as the release baseline; local build hashes belong to the development status record. See [Direct SteamOS iteration](plugin/docs/PACKAGING.md#direct-steamos-iteration) for the architecture scope and verification contract.
 
 Standalone `MAKO_INSTALL_PREFIX` relocates its payload and state together. Decky's coexistence logic targets the default `~/.local` installation. Do not assume a custom standalone prefix is adopted by Decky.
 
@@ -96,6 +99,7 @@ Before replacement starts, failure only needs staging cleanup. During replacemen
 | --- | --- |
 | [test_dual_arch_installation.py](plugin/tests/test_dual_arch_installation.py) | Archive checksum/host/marker rejection, complete optional 32-bit chain, manifest rewriting, shared-owner selection, Decky/standalone cleanup-list agreement, required VRR helper completeness/rollback/uninstall, diagnostics preservation, file modes and symlinks, failed copy preservation, reverse restoration of deleted/new files, retained recovery backups, configuration fallback/rollback, restrictive-umask no-op and late install failure |
 | [test_native_renderer_lifecycle_matrix.py](plugin/tests/test_native_renderer_lifecycle_matrix.py) | Standalone and Decky installation order, matched-version adoption, both uninstaller paths, and preservation of configuration and unrelated Flatpak data |
+| [test_dev_renderer_deployment.py](plugin/tests/test_dev_renderer_deployment.py) | Direct deployment with competing Decky/standalone copies, selected-architecture isolation, unchanged package/configuration records, manifest disagreement rejection, and active-library hash verification using synthetic builds |
 | [test_plugin_installation.py](plugin/tests/test_plugin_installation.py) | Native-install/Flatpak-refresh result handling, including skipping refresh after native failure and retaining native success after a reported refresh failure |
 | [test-mako-installer.sh](engine/scripts/test-mako-installer.sh) | Manifest/desktop rewriting, corrupt late payload before replacement, injected final identity-rename failure, restored payload/ownership/identity, new-file removal, staging cleanup, permission failures, successful retry, post-commit UI failure, Decky private-payload coexistence, diagnostics preservation, and explicit configuration purge; registered as CTest `standalone-installer` |
 | [test_package_contract.py](plugin/tests/test_package_contract.py) and [test_path_package_contract.py](plugin/tests/test_path_package_contract.py) | Package identities/layout and cross-component managed paths |

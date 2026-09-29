@@ -46,6 +46,7 @@ from .constants import (
 )
 from .config_schema import ConfigurationManager, DEFAULT_PROFILE_NAME
 from .host_environment import detect_host_environment
+from .layer_manifests import manifest_owner
 from .managed_files import (
     copy_managed_file_atomically,
     managed_install_transaction,
@@ -460,25 +461,7 @@ class InstallationService(BaseService):
 
     def _active_manifest_owner(self) -> Optional[str]:
         """Identify which managed library the shared private manifest selects."""
-        try:
-            manifest = json.loads(self.json_file.read_text(encoding="utf-8"))
-            layer = manifest.get("layer")
-            if not isinstance(layer, dict):
-                return None
-            library_path = layer.get("library_path")
-            if not isinstance(library_path, str) or not library_path:
-                return None
-            selected_library = Path(library_path)
-            if not selected_library.is_absolute():
-                selected_library = self.json_file.parent / selected_library
-            selected_library = selected_library.resolve(strict=False)
-            if selected_library == self.lib_file.resolve(strict=False):
-                return ACTIVE_RENDERER_OWNER_DECKY
-            if selected_library == self.standalone_lib_file.resolve(strict=False):
-                return ACTIVE_RENDERER_OWNER_STANDALONE
-            return None
-        except (OSError, json.JSONDecodeError, TypeError, ValueError):
-            return None
+        return manifest_owner(self.json_file, self.lib_file, self.standalone_lib_file)
 
     def _active_renderer_library_file(self) -> Path:
         """Return the native library selected by the shared private manifest."""

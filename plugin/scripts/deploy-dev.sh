@@ -46,16 +46,10 @@ if ((${#vkbasalt_paths[@]} != 7)); then
   exit 1
 fi
 renderer_library_filename="${renderer_paths[0]}"
-renderer_library_relative_path="${renderer_paths[1]}"
-renderer_library32_relative_path="${renderer_paths[2]}"
 spatial_library_filename="${renderer_paths[3]}"
-spatial_library_relative_path="${renderer_paths[4]}"
-spatial_library32_relative_path="${renderer_paths[5]}"
 spatial_manifest_relative_path="${renderer_paths[6]}"
 spatial_manifest32_relative_path="${renderer_paths[7]}"
 vkbasalt_library_filename="${vkbasalt_paths[0]}"
-vkbasalt_library_relative_path="${vkbasalt_paths[1]}"
-vkbasalt_library32_relative_path="${vkbasalt_paths[2]}"
 vkbasalt_manifest_relative_path="${vkbasalt_paths[3]}"
 vkbasalt_manifest32_relative_path="${vkbasalt_paths[4]}"
 vkbasalt_shader_relative_path="${vkbasalt_paths[5]}"
@@ -101,7 +95,7 @@ Options:
   --engine-repo PATH      MAKO Renderer source directory for --engine.
   -h, --help              Show this help.
 
-The plugin must first have installed its engine normally. Quit the test game
+The plugin and a managed native Renderer must already be installed. Quit the test game
 before --engine. Reload it from Decky's Developer menu after deployment, or
 pass --reload to reload only this plugin automatically.
 EOF
@@ -355,6 +349,31 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ "$deploy_engine" == true || "$deploy_engine_32" == true ]]; then
+  # Resolve selection before building or changing the installed plugin. A
+  # standalone install may own the shared manifests even when Decky's payload
+  # is still present. Never infer active selection from that inactive copy.
+  for bits in 64 32; do
+    if [[ "$bits" == 64 && "$deploy_engine" == false ]] ||
+        [[ "$bits" == 32 && "$deploy_engine_32" == false ]]; then
+      continue
+    fi
+    selected_path_output="$(python3 "$project_dir/scripts/dev-renderer-selection.py" --bits "$bits")"
+    mapfile -t selected_paths <<< "$selected_path_output"
+    if ((${#selected_paths[@]} != 3)); then
+      echo "Incomplete active Renderer selection for $bits-bit deployment." >&2
+      exit 1
+    fi
+    if [[ "$bits" == 64 ]]; then
+      installed_layer_64="${selected_paths[0]}"
+      installed_spatial_layer_64="${selected_paths[1]}"
+      installed_vkbasalt_library_64="${selected_paths[2]}"
+    else
+      installed_layer_32="${selected_paths[0]}"
+      installed_spatial_layer_32="${selected_paths[1]}"
+      installed_vkbasalt_library_32="${selected_paths[2]}"
+    fi
+  done
+
   if [[ ! -x "$engine_repo/scripts/build-steamos-dev.sh" ]]; then
     echo "Incremental engine builder not found: $engine_repo/scripts/build-steamos-dev.sh" >&2
     exit 1
@@ -396,12 +415,9 @@ if [[ "$deploy_engine" == true || "$deploy_engine_32" == true ]]; then
     built_layer_64="$engine_build_dir/mako-render/$renderer_library_filename"
     built_spatial_layer_64="$engine_build_dir/mako-render/$spatial_library_filename"
     built_spatial_manifest_64="$engine_build_dir/mako-render/private-scaling-manifest/${spatial_manifest_relative_path##*/}"
-    installed_layer_64="$HOME/$renderer_library_relative_path"
-    installed_spatial_layer_64="$HOME/$spatial_library_relative_path"
     installed_spatial_manifest_64="$HOME/$spatial_manifest_relative_path"
     built_vkbasalt_library_64="$vkbasalt_stage_dir/lib/vkbasalt/$vkbasalt_library_filename"
     built_vkbasalt_manifest_64="$vkbasalt_stage_dir/share/mako-render/vulkan/vkbasalt.d/${vkbasalt_manifest_relative_path##*/}"
-    installed_vkbasalt_library_64="$HOME/$vkbasalt_library_relative_path"
     installed_vkbasalt_manifest_64="$HOME/$vkbasalt_manifest_relative_path"
   fi
   if [[ "$deploy_engine_32" == true ]]; then
@@ -412,12 +428,9 @@ if [[ "$deploy_engine" == true || "$deploy_engine_32" == true ]]; then
     built_layer_32="$engine_build_32_dir/mako-render/$renderer_library_filename"
     built_spatial_layer_32="$engine_build_32_dir/mako-render/$spatial_library_filename"
     built_spatial_manifest_32="$engine_build_32_dir/mako-render/private-scaling-manifest/${spatial_manifest32_relative_path##*/}"
-    installed_layer_32="$HOME/$renderer_library32_relative_path"
-    installed_spatial_layer_32="$HOME/$spatial_library32_relative_path"
     installed_spatial_manifest_32="$HOME/$spatial_manifest32_relative_path"
     built_vkbasalt_library_32="$vkbasalt_stage_dir/lib32/vkbasalt/$vkbasalt_library_filename"
     built_vkbasalt_manifest_32="$vkbasalt_stage_dir/share/mako-render/vulkan/vkbasalt.d/${vkbasalt_manifest32_relative_path##*/}"
-    installed_vkbasalt_library_32="$HOME/$vkbasalt_library32_relative_path"
     installed_vkbasalt_manifest_32="$HOME/$vkbasalt_manifest32_relative_path"
   fi
   for layer_path in \
@@ -439,11 +452,17 @@ if [[ "$deploy_engine" == true || "$deploy_engine_32" == true ]]; then
     fi
   done
   if [[ -n "$built_spatial_manifest_64" ]]; then
+    cp "$built_spatial_manifest_64" "$vkbasalt_stage_dir/spatial-64.json"
+    built_spatial_manifest_64="$vkbasalt_stage_dir/spatial-64.json"
+    rewrite_private_layer_manifest "$built_spatial_manifest_64" "$installed_spatial_layer_64"
     verify_private_layer_manifest \
       "$built_spatial_manifest_64" "$installed_spatial_manifest_64" \
       "$installed_spatial_layer_64" "VK_LAYER_MAKO_spatial_scaling"
   fi
   if [[ -n "$built_spatial_manifest_32" ]]; then
+    cp "$built_spatial_manifest_32" "$vkbasalt_stage_dir/spatial-32.json"
+    built_spatial_manifest_32="$vkbasalt_stage_dir/spatial-32.json"
+    rewrite_private_layer_manifest "$built_spatial_manifest_32" "$installed_spatial_layer_32"
     verify_private_layer_manifest \
       "$built_spatial_manifest_32" "$installed_spatial_manifest_32" \
       "$installed_spatial_layer_32" "VK_LAYER_MAKO_spatial_scaling"
@@ -590,6 +609,8 @@ if [[ -n "$built_layer_64" ]]; then
   copy_file "$built_spatial_manifest_64" "$installed_spatial_manifest_64"
   copy_file "$built_vkbasalt_library_64" "$installed_vkbasalt_library_64"
   copy_file "$built_vkbasalt_manifest_64" "$installed_vkbasalt_manifest_64"
+  python3 "$project_dir/scripts/dev-renderer-selection.py" --bits 64 \
+    --verify "$built_layer_64" "$built_spatial_layer_64" "$built_vkbasalt_library_64"
   echo "Deployed incremental 64-bit Renderer and private vkBasalt layers."
 fi
 if [[ -n "$built_layer_32" ]]; then
@@ -598,6 +619,8 @@ if [[ -n "$built_layer_32" ]]; then
   copy_file "$built_spatial_manifest_32" "$installed_spatial_manifest_32"
   copy_file "$built_vkbasalt_library_32" "$installed_vkbasalt_library_32"
   copy_file "$built_vkbasalt_manifest_32" "$installed_vkbasalt_manifest_32"
+  python3 "$project_dir/scripts/dev-renderer-selection.py" --bits 32 \
+    --verify "$built_layer_32" "$built_spatial_layer_32" "$built_vkbasalt_library_32"
   echo "Deployed incremental 32-bit Renderer and private vkBasalt layers."
 fi
 if [[ "$deploy_engine" == true || "$deploy_engine_32" == true ]]; then
