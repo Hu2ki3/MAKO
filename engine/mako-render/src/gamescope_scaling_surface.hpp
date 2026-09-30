@@ -94,7 +94,7 @@ namespace mako::layer {
         [[nodiscard]] bool preparePresent(
             VkSurfaceKHR surface, VkSwapchainKHR swapchain,
             double outputFps = 0.0, uint32_t refreshHz = 0,
-            size_t outputBatchSize = 1);
+            size_t outputBatchSize = 1, bool generationEnabled = false);
         [[nodiscard]] bool owns(VkSurfaceKHR surface) const;
 
         /// Preserve the application's X11 extent contract at both public

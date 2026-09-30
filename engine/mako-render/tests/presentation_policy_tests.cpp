@@ -154,7 +154,50 @@ void testOrderedPresentationTimeline() {
     for (const double refresh : {30., 40., 60., 90., 120., 144., 240.}) {
         const auto period = std::chrono::duration_cast<Clock::duration>(
             std::chrono::duration<double>(1.0 / refresh));
+        // A completion-limited application must not inherit a generated
+        // batch's two-refresh lead while live Frame Generation is disabled.
+        OrderedPresentTimeline native;
+        auto completed = start;
+        for (size_t frame = 0; frame < 120; ++frame) {
+            const auto slot = native.schedule(completed, refresh, refresh, 1, false);
+            expect(slot && slot->submitAt == completed && slot->presentAt == completed,
+                "disabled generation delayed a completion-limited application");
+            completed += period;
+        }
+        // Explicit policy changes must retain queued deadlines. An active
+        // Fractional one-output turn still needs its original readiness lead.
+        OrderedPresentTimeline transition;
+        const auto generated = transition.schedule(start, refresh, refresh, 3);
+        const auto disabled = transition.schedule(start, refresh, refresh, 1, false);
+        expect(disabled->presentAt == generated->presentAt + period &&
+                disabled->presentAt - disabled->submitAt == period,
+            "live generation-off overtook queued output or retained batch lead");
+        const auto resumed = transition.schedule(disabled->presentAt, refresh, refresh, 1, true);
+        expect(resumed->presentAt == disabled->presentAt + 2 * period,
+            "active one-output turn lost its generated readiness lead");
+        const auto stalled = transition.schedule(start + 2s, refresh, refresh, 1, false);
+        expect(stalled->presentAt == start + 2s && stalled->submitAt == start + 2s,
+            "disabled generation retained queue debt after a stall");
         for (size_t multiplier = 2; multiplier <= 5; ++multiplier) {
+            // Returning from an application presentation wait does not prove
+            // the next frame's asynchronous GPU work is ready. Preserve the
+            // readiness lead even when an earlier deadline is still future.
+            OrderedPresentTimeline completionLimited;
+            auto ready = start;
+            auto previousOutput = start;
+            for (size_t batch = 0; batch < 60; ++batch) {
+                for (size_t output = 0; output < multiplier; ++output) {
+                    const auto slot = completionLimited.schedule(
+                        ready, refresh, refresh, multiplier);
+                    const auto lead = period * static_cast<int64_t>(multiplier);
+                    expect(slot && slot->presentAt - ready >= lead &&
+                            slot->presentAt > previousOutput,
+                        "completion wait consumed asynchronous GPU readiness lead");
+                    previousOutput = slot->presentAt;
+                    ready = slot->submitAt;
+                }
+                ready = previousOutput + period / 4;
+            }
             OrderedPresentTimeline timeline;
             auto now = start;
             auto last = start;
@@ -207,6 +250,12 @@ void testOrderedPresentationTimeline() {
             last = slot->presentAt;
         }
     }
+    OrderedPresentTimeline growing;
+    const auto small = growing.schedule(start, 120, 120, 2);
+    const auto larger = growing.schedule(start + 10ms, 120, 120, 5);
+    expect(larger->presentAt > small->presentAt &&
+            larger->presentAt >= start + 10ms + 41666us,
+        "increased generated workload reused a shorter readiness lead");
     for (const double invalid : {0., -1., 1001.,
             std::numeric_limits<double>::infinity(),
             std::numeric_limits<double>::quiet_NaN()}) {

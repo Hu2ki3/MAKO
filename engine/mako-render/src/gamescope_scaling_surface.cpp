@@ -736,7 +736,7 @@ GamescopeScalingSurface::applicationFormats(
 bool GamescopeScalingSurface::preparePresent(
         const VkSurfaceKHR surface, const VkSwapchainKHR swapchain,
         const double outputFps, const uint32_t refreshHz,
-        const size_t outputBatchSize) {
+        const size_t outputBatchSize, const bool generationEnabled) {
     std::unique_lock lock(impl->mutex);
     auto found = impl->surfaces.find(surface);
     if (found == impl->surfaces.end())
@@ -760,7 +760,7 @@ bool GamescopeScalingSurface::preparePresent(
             OrderedPresentTimeline::Clock::now(),
             OrderedPresentTimeline::validRate(outputFps)
                 ? outputFps : content->second->refreshHz,
-            content->second->refreshHz, outputBatchSize);
+            content->second->refreshHz, outputBatchSize, generationEnabled);
         if (!slot)
             return false;
         // No GPU-idle wait and no adapter lock held during backpressure.

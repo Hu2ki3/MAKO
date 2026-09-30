@@ -39,6 +39,10 @@ VkResult Swapchain::queuePresentWithRetirementFence(
         const vk::Vulkan& vk, const VkQueue queue,
         const VkPresentInfoKHR& incomingPresentInfo) {
     VkPresentInfoKHR presentInfo = incomingPresentInfo;
+    // Use the effective policy, not this frame's batch size: Fractional and
+    // temporary native relief still belong to the active generated timeline.
+    const bool generationEnabled = effectiveFrameGenerationEnabled(
+        this->profile, this->gamescopeRefreshHz);
     VkPresentTimeGOOGLE presentTime{};
     VkPresentTimesInfoGOOGLE presentTimes{
         .sType = VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_GOOGLE,
@@ -54,7 +58,8 @@ VkResult Swapchain::queuePresentWithRetirementFence(
         const auto slot = this->wsiPresentTimeline.schedule(
             DiagnosticsClock::now(),
             gamescopeBridgeOutputFps(this->profile, *this->gamescopeRefreshHz),
-            *this->gamescopeRefreshHz, this->bridgeOutputBatchSize);
+            *this->gamescopeRefreshHz, this->bridgeOutputBatchSize,
+            generationEnabled);
         if (slot) {
             // Google timing creates feedback even when diagnostics are off.
             // Drain our namespace in bounded batches so old WSI versions
@@ -91,7 +96,7 @@ VkResult Swapchain::queuePresentWithRetirementFence(
                     gamescopeBridgeOutputFps(this->profile,
                         this->gamescopeRefreshHz.value_or(0)),
                     this->gamescopeRefreshHz.value_or(0),
-                    this->bridgeOutputBatchSize))
+                    this->bridgeOutputBatchSize, generationEnabled))
                 return VK_ERROR_SURFACE_LOST_KHR;
         }
     }

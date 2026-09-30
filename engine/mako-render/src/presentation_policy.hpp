@@ -883,8 +883,13 @@ namespace mako::layer {
 
     /// Spaces the private bridge's compositor commits without waiting for a
     /// lower Wayland FIFO callback. Allow at least two refresh periods or one
-    /// admitted output batch for asynchronous GPU work to become ready. Bound
-    /// submission to that lead plus one refresh period; larger batches cannot
+    /// admitted output batch for asynchronous generated work to become ready.
+    /// A future deadline alone is not GPU-readiness proof: shortening this
+    /// lead can let both outputs become ready after their deadlines and be
+    /// coalesced by the compositor, even with healthy present-call counts.
+    /// Explicitly disabled generation needs no batch lead: an application that
+    /// waits for presentation must remain able to submit once per refresh.
+    /// Bound submission to that lead plus one refresh period; larger batches cannot
     /// accumulate an unbounded queue, and unused configured capacity adds none.
     /// Keep the last deadline across live changes: already queued images must
     /// not be overtaken. A late frame rebases instead of accruing catch-up debt.
@@ -903,7 +908,8 @@ namespace mako::layer {
 
         [[nodiscard]] std::optional<Slot> schedule(const TimePoint now,
                 const double outputFps, const double refreshFps,
-                const size_t outputBatchSize = 1) {
+                const size_t outputBatchSize = 1,
+                const bool generationEnabled = true) {
             if (!validRate(outputFps) || !validRate(refreshFps) ||
                     outputBatchSize == 0 ||
                     outputBatchSize > GeneratedFramePlan::capacity + 1)
@@ -914,10 +920,13 @@ namespace mako::layer {
             };
             const auto refreshPeriod = period(refreshFps);
             const auto interval = period(std::min(outputFps, refreshFps));
-            const auto lead = std::max(2 * refreshPeriod,
-                interval * static_cast<int64_t>(outputBatchSize));
-            const auto presentAt = std::max(now + lead,
-                this->lastPresentAt ? *this->lastPresentAt + interval : now);
+            const auto lead = generationEnabled
+                ? std::max(2 * refreshPeriod,
+                    interval * static_cast<int64_t>(outputBatchSize))
+                : Clock::duration::zero();
+            const auto next = this->lastPresentAt
+                ? *this->lastPresentAt + interval : now;
+            const auto presentAt = std::max(now + lead, next);
             this->lastPresentAt = presentAt;
             return Slot{
                 .submitAt = std::max(now, presentAt - lead - refreshPeriod),

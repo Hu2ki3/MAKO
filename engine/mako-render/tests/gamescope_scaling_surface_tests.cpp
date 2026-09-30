@@ -354,7 +354,7 @@ int main() {
         uint64_t previousTime = 0;
         for (uint32_t output = 1; output <= 130; ++output) {
             const auto before = std::chrono::steady_clock::now();
-            expect(bridge.preparePresent(surface, timedSwapchain, 120, 120),
+            expect(bridge.preparePresent(surface, timedSwapchain, 120, 120, 1, true),
                 "timed generated/real bridge output");
             const auto ns = mako_test_surface_present_time();
             const auto nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -379,9 +379,24 @@ int main() {
                 "protocol timing and refresh events must reach the matching accumulator");
         expect(mako_test_surface_reads() == timedReads, "timing diagnostics must not read the socket");
         bridge.destroySwapchain(surface, timedSwapchain);
+        expect(bridge.createSwapchain(surface, timedSwapchain, feedbackInfo, 5,
+                "MAKO Renderer", VK_PRESENT_MODE_FIFO_KHR, 120),
+            "retained generation-off bridge creation");
+        const auto nativeBefore = std::chrono::steady_clock::now();
+        expect(bridge.preparePresent(surface, timedSwapchain, 120, 120, 1, false),
+            "retained generation-off bridge output");
+        const auto nativeAfter = std::chrono::steady_clock::now();
+        const auto nativeNs = mako_test_surface_present_time();
+        const auto nanos = [](const auto time) {
+            return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                time.time_since_epoch()).count());
+        };
+        expect(nativeNs >= nanos(nativeBefore) && nativeNs <= nanos(nativeAfter),
+            "generation-off protocol added an unused generated-batch lead");
+        bridge.destroySwapchain(surface, timedSwapchain);
         const int associations = mako_test_surface_associations();
         const int presentModes = mako_test_surface_present_modes();
-        expect(associations == 130, "surface creation must not steal existing window content");
+        expect(associations == 131, "surface creation must not steal existing window content");
         const int reads = mako_test_surface_reads();
         const int presentGeometryQueries = mako_test_surface_geometry_queries();
         for (int frame = 0; frame < 100; ++frame)
