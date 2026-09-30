@@ -53,6 +53,22 @@ VkResult Swapchain::present(const vk::Vulkan& vk,
     );
     this->bridgeOutputBatchSize = 1;
     this->applyPendingSpatialScaler(vk);
+    if (presentDiagnosticsEnabled()) {
+        const auto requested = present_diagnostics::applicationPresentMode(
+            this->info.incomingPresentMode, nextChain);
+        if (this->diagnosticsState.applicationPresentMode != requested) {
+            this->diagnosticsState.applicationPresentMode = requested;
+            std::cerr << "MAKO Renderer: present diagnostics: operation=application-present-mode"
+                      << " context=" << this->diagnosticsState.contextId
+                      << " swapchain=" << swapchain
+                      << " requested_present_mode=" << requested.mode
+                      << " dynamic_override=" << requested.dynamic
+                      << " effective_present_mode=" << static_cast<int64_t>(this->info.presentMode)
+                      << " ordered_transport=" << this->privateOrderedTransport
+                      << " bridge=" << static_cast<bool>(this->info.gamescopeScalingSurface)
+                      << " action=diagnostic-only\n";
+        }
+    }
     // Match the immutable create-time choice. Ordered SDR filters Gamescope's
     // dynamic MAILBOX override so the private transport stays ordered. HDR
     // preserves it. A feedback transition cannot change the game-owned

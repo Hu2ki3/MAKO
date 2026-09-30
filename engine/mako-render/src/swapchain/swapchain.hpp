@@ -16,6 +16,7 @@
 #include "generated_frame_delivery.hpp"
 #include "profile_update.hpp"
 #include "presentation_policy.hpp"
+#include "present_diagnostics.hpp"
 #include "runtime_status.hpp"
 #include "runtime_transition.hpp"
 #include "spatial_scaler.hpp"
@@ -328,6 +329,8 @@ namespace mako::layer {
             uint64_t contextId{0};
             bool orderedAcquireClassificationSplitLogged{false};
             bool orderedGeneratedAdmissionPolicyLogged{false};
+            std::optional<present_diagnostics::ApplicationPresentMode>
+                applicationPresentMode;
         };
 
         struct ColorTransitionState {

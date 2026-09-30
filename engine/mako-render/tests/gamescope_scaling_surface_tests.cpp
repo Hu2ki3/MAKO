@@ -3,6 +3,7 @@
 #include "gamescope_scaling_surface.hpp"
 #include "spatial_scaling_policy.hpp"
 #include "bridge_present_timing.hpp"
+#include "present_diagnostics.hpp"
 #include <algorithm>
 #include <X11/Xlib.h>
 #include <xcb/xcb.h>
@@ -187,6 +188,113 @@ namespace {
 }
 
 int main() {
+    for (const bool bridge : {false, true}) {
+        for (const bool applicationRole : {false, true}) {
+            for (const bool generation : {false, true}) {
+                expect(needsBridgePresentWaitFallback(bridge, applicationRole, generation) ==
+                        (bridge && applicationRole && generation),
+                    "presentation-wait fallback escaped the provisioned private bridge");
+            }
+        }
+    }
+    VkPhysicalDevicePresentIdFeaturesKHR presentId{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR,
+        .presentId = VK_TRUE,
+    };
+    VkPhysicalDevicePresentWaitFeaturesKHR presentWait{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR,
+        .pNext = &presentId,
+        .presentWait = VK_TRUE,
+    };
+    VkPhysicalDeviceTimelineSemaphoreFeatures timeline{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES,
+        .pNext = &presentWait,
+        .timelineSemaphore = VK_TRUE,
+    };
+    VkPhysicalDeviceFeatures2 features{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+        .pNext = &timeline,
+        .features = {.robustBufferAccess = VK_TRUE},
+    };
+#if defined(VK_KHR_present_wait2)
+    VkPhysicalDevicePresentWait2FeaturesKHR presentWait2{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_2_FEATURES_KHR,
+        .presentWait2 = VK_TRUE,
+    };
+    presentId.pNext = &presentWait2;
+#endif
+    expect(requestsApplicationPresentWait(&features),
+        "nested device feature request must detect presentation waits");
+    expect(presentWait.presentWait == VK_TRUE,
+        "device request inspection mutated caller-owned features");
+    disableBridgePresentWaitFeatures(features);
+    expect(!requestsApplicationPresentWait(&features) && !presentWait.presentWait,
+        "bridge must decline both presentation-wait feature generations");
+    expect(features.features.robustBufferAccess && timeline.timelineSemaphore &&
+            presentId.presentId && features.pNext == &timeline &&
+            timeline.pNext == &presentWait && presentWait.pNext == &presentId,
+        "bridge changed unrelated features, present IDs or chain linkage");
+#if defined(VK_KHR_present_wait2)
+    expect(!presentWait2.presentWait2 && presentId.pNext == &presentWait2,
+        "wait2 fallback must preserve its feature structure");
+    presentWait2.presentWait2 = VK_TRUE;
+    expect(requestsApplicationPresentWait(&features),
+        "wait2-only device request bypassed the capability contract");
+    disableBridgePresentWaitFeatures(features);
+#endif
+    disableBridgePresentWaitFeatures(features);
+    VkPhysicalDeviceFeatures2 emptyFeatures{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+    };
+    disableBridgePresentWaitFeatures(emptyFeatures);
+    expect(!requestsApplicationPresentWait(nullptr) &&
+            !requestsApplicationPresentWait(&emptyFeatures),
+        "absent wait features must remain supported");
+    using namespace std::chrono_literals;
+    using present_diagnostics::ApplicationPresentWait;
+    using present_diagnostics::PresentWaitApi;
+    ApplicationPresentWait waits;
+    const auto start = present_diagnostics::Clock::time_point{10s};
+    expect(!waits.observe({}, {}, PresentWaitApi::Khr, 100, 0, VK_TIMEOUT,
+            start, start + 2ms), "short wait window emitted early");
+    expect(!waits.observe({}, {}, PresentWaitApi::Khr, 101, UINT64_MAX, VK_SUCCESS,
+            start + 10ms, start + 30ms), "wait sampling must be bounded");
+    const auto waited = waits.observe({}, {}, PresentWaitApi::Khr, 102, 50,
+        VK_ERROR_DEVICE_LOST, start + 990ms, start + 1010ms);
+    expect(waited && waited->calls == 3 && waited->successful == 1 &&
+            waited->timeouts == 1 && waited->errors == 1 && waited->polls == 1 &&
+            waited->firstPresentId == 100 && waited->lastPresentId == 102 &&
+            waited->duration.mean() == 14 && waited->duration.maximum == 20,
+        "wait telemetry must distinguish polling, timeout, success and failure");
+    expect(!waits.observe({}, {}, PresentWaitApi::Khr2, 1, 1, VK_SUCCESS,
+            start + 3s, start + 3001ms), "a different API inherited a stale window");
+    const auto replaced = waits.observe({}, {}, PresentWaitApi::Khr2, 2, 1, VK_SUCCESS,
+        start + 4s, start + 4001ms);
+    expect(replaced && replaced->calls == 2 && replaced->firstPresentId == 1,
+        "a changed wait stream merged prior present IDs");
+    size_t forwardedWaits{};
+    for (const auto expected : {VK_SUCCESS, VK_TIMEOUT, VK_ERROR_DEVICE_LOST}) {
+        const auto actual = present_diagnostics::observeApplicationPresentWait(
+            {}, {}, PresentWaitApi::Khr, UINT64_MAX, UINT64_MAX,
+            [&] { ++forwardedWaits; return expected; });
+        expect(actual == expected, "wait diagnostics changed the driver's result");
+    }
+    expect(forwardedWaits == 3, "wait diagnostics retried or skipped an application wait");
+    const VkPresentModeKHR requestedMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+    const VkSwapchainPresentModeInfoEXT dynamicMode{
+        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_EXT,
+        .swapchainCount = 1, .pPresentModes = &requestedMode};
+    expect(present_diagnostics::applicationPresentMode(VK_PRESENT_MODE_FIFO_KHR,
+            &dynamicMode) == present_diagnostics::ApplicationPresentMode{0, true},
+        "diagnostics lost the application's dynamic VSync-off request");
+    expect(present_diagnostics::applicationPresentMode(VK_PRESENT_MODE_FIFO_KHR,
+            nullptr) == present_diagnostics::ApplicationPresentMode{2, false},
+        "diagnostics fabricated a dynamic mode override");
+    auto ambiguousMode = dynamicMode;
+    ambiguousMode.swapchainCount = 2;
+    expect(present_diagnostics::applicationPresentMode(VK_PRESENT_MODE_FIFO_KHR,
+            &ambiguousMode).mode == -1,
+        "multi-swapchain modes must not be attributed to the first element");
     using present_diagnostics::BridgePresentTiming;
     BridgePresentTiming timing;
     constexpr uint64_t origin = 10000000000;
@@ -208,8 +316,26 @@ int main() {
     timing.feedback(129, origin + 129, origin + 9000000); // Gap in feedback.
     const auto gaps = timing.take(origin + 2000000000);
     expect(gaps && gaps->overwritten == 1 && gaps->unmatched == 2 && gaps->feedbacks == 1 &&
-        gaps->discontinuities == 1 && gaps->reportedInterval.count == 0 && timing.outstanding() == 127,
+        gaps->discontinuities == 1 && gaps->nonconsecutiveIds == 1 &&
+        gaps->repeatedTimestamps == 0 && gaps->backwardsTimestamps == 0 &&
+        gaps->reportedInterval.count == 0 && timing.outstanding() == 127,
         "missing or mismatched feedback must not fabricate interval samples");
+    BridgePresentTiming repeated;
+    for (uint32_t id = 1; id <= 10; ++id) {
+        repeated.request(id, origin + id, origin, origin);
+        repeated.feedback(id, origin + id, origin + 1000 * ((id - 1) / 5 + 1));
+    }
+    const auto grouped = repeated.take(origin + 1000000000);
+    expect(grouped && grouped->feedbacks == 10 && grouped->discontinuities == 8 &&
+        grouped->repeatedTimestamps == 8 && grouped->nonconsecutiveIds == 0 &&
+        grouped->backwardsTimestamps == 0 && grouped->reportedInterval.count == 1,
+        "reused compositor predictions must be distinct from nonconsecutive IDs");
+    repeated.request(12, origin + 12, origin + 1000000001, origin);
+    repeated.feedback(12, origin + 12, origin + 1999);
+    const auto backwards = repeated.take(origin + 2000000000);
+    expect(backwards && backwards->nonconsecutiveIds == 1 &&
+        backwards->backwardsTimestamps == 1 && backwards->discontinuities == 1,
+        "overlapping discontinuity causes must not double-count the interval");
     VkInstanceCreateInfo instanceInfo{.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     expect(!requestsGamescopeScalingSurface(instanceInfo), "headless probe must not open a connection");
     const char* extensions[]{"VK_KHR_surface", "VK_KHR_xlib_surface"};

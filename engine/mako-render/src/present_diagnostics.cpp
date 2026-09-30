@@ -24,6 +24,9 @@ void logBridgeTiming(const uint64_t bridgeId, const VkSwapchainKHR swapchain,
          << " requests=" << window.requests << " feedbacks=" << window.feedbacks
          << " outstanding=" << outstanding << " unmatched=" << window.unmatched
          << " overwritten=" << window.overwritten << " discontinuities=" << window.discontinuities
+         << " nonconsecutive_ids=" << window.nonconsecutiveIds
+         << " repeated_timestamps=" << window.repeatedTimestamps
+         << " backwards_timestamps=" << window.backwardsTimestamps
          << " requested_interval_samples=" << window.requestedInterval.count
          << " requested_interval_mean_ms=" << window.requestedInterval.mean()
          << " requested_interval_stddev_ms=" << window.requestedInterval.deviation()
@@ -37,6 +40,31 @@ void logBridgeTiming(const uint64_t bridgeId, const VkSwapchainKHR swapchain,
          << " submit_lateness_mean_ms=" << window.submitLateness.mean()
          << " submit_lateness_max_ms=" << window.submitLateness.maximum
          << " refresh_cycle_ns=" << refreshCycleNs << '\n';
+    std::cerr << line.str();
+}
+
+void recordApplicationPresentWait(const VkDevice device, const VkSwapchainKHR swapchain,
+        const PresentWaitApi api, const uint64_t presentId, const uint64_t timeout,
+        const VkResult result, const Clock::time_point started,
+        const Clock::time_point finished) {
+    thread_local ApplicationPresentWait observations;
+    thread_local uint64_t waiterId = allocateContextId();
+    const auto window = observations.observe(device, swapchain, api,
+        presentId, timeout, result, started, finished);
+    if (!window)
+        return;
+    std::ostringstream line;
+    line << "MAKO Renderer: present diagnostics: operation=application-present-wait"
+         << " waiter=" << waiterId << " pid=" << getpid()
+         << " device=" << device << " swapchain=" << swapchain
+         << " api=" << (api == PresentWaitApi::Khr ? "KHR" : "KHR2")
+         << " calls=" << window->calls << " successful=" << window->successful
+         << " timeouts=" << window->timeouts << " errors=" << window->errors
+         << " polls=" << window->polls
+         << " first_present_id=" << window->firstPresentId
+         << " last_present_id=" << window->lastPresentId
+         << " duration_mean_ms=" << window->duration.mean()
+         << " duration_max_ms=" << window->duration.maximum << '\n';
     std::cerr << line.str();
 }
 namespace {

@@ -38,6 +38,11 @@ namespace mako::layer::present_diagnostics {
             size_t unmatched{};
             size_t overwritten{};
             size_t discontinuities{};
+            // These causes overlap; discontinuities still counts each
+            // unusable interval only once. Reused predictions are not drops.
+            size_t nonconsecutiveIds{};
+            size_t repeatedTimestamps{};
+            size_t backwardsTimestamps{};
             Samples requestedInterval;
             Samples reportedInterval;
             Samples lateness;
@@ -70,6 +75,9 @@ namespace mako::layer::present_diagnostics {
             window.lateness.add(actual >= desired ? milliseconds(actual - desired)
                                                   : -milliseconds(desired - actual));
             if (previousActual) {
+                window.nonconsecutiveIds += id != previousId + uint32_t{1};
+                window.repeatedTimestamps += actual == previousActual;
+                window.backwardsTimestamps += actual < previousActual;
                 if (id == previousId + uint32_t{1} && actual > previousActual)
                     window.reportedInterval.add(milliseconds(actual - previousActual));
                 else

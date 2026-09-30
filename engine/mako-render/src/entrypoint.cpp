@@ -61,6 +61,7 @@ namespace {
         vk::VulkanInstanceFuncs funcs;
         std::string engineName;
         std::unique_ptr<GamescopeScalingSurface> scalingSurfaces;
+        std::atomic_bool presentWaitFallbackLogged{false};
 
         std::unordered_map<VkDevice, vk::Vulkan> devices;
         std::unordered_set<VkDevice> nativeDevices;
@@ -612,6 +613,30 @@ namespace {
     }
 
     // create device
+    bool bridgePresentWaitFallback() {
+        return layer_info && instance_info && layer_info->root.active() &&
+            needsBridgePresentWaitFallback(
+                instance_info->scalingSurfaces != nullptr, frameGenerationLayer,
+                layer_info->root.frameGenerationInteropProvisioned());
+    }
+
+    void myvkGetPhysicalDeviceFeatures2(
+            VkPhysicalDevice physicalDevice, VkPhysicalDeviceFeatures2* features) {
+        // initVulkanInstanceFuncs resolves the core spelling with the KHR
+        // alias as fallback. GPA below only exposes supported entrypoints.
+        instance_info->funcs.GetPhysicalDeviceFeatures2(physicalDevice, features);
+        if (bridgePresentWaitFallback()) {
+            disableBridgePresentWaitFeatures(*features);
+            if (!instance_info->presentWaitFallbackLogged.exchange(
+                    true, std::memory_order_relaxed)) {
+                std::cerr << "MAKO Renderer: spatial scaling bridge presentation-wait "
+                             "fallback enabled; application presentWait=0 presentWait2=0; "
+                             "scope=provisioned-bridge; lifetime=process; "
+                             "ordered output and GPU readiness retained\n";
+            }
+        }
+    }
+
     VkResult myvkCreateDevice(
             VkPhysicalDevice physdev,
             const VkDeviceCreateInfo* info,
@@ -621,6 +646,12 @@ namespace {
             std::cerr << "MAKO Renderer: device creation requested before "
                          "instance initialization\n";
             return VK_ERROR_INITIALIZATION_FAILED;
+        }
+        if (bridgePresentWaitFallback() && requestsApplicationPresentWait(info->pNext)) {
+            std::cerr << "MAKO Renderer: spatial scaling bridge cannot enable "
+                         "application presentation-wait features; "
+                         "honor the reported feature capabilities\n";
+            return VK_ERROR_FEATURE_NOT_PRESENT;
         }
         // apply layer chaining
         auto* layerInfo = reinterpret_cast<VkLayerDeviceCreateInfo*>(const_cast<void*>(info->pNext));
@@ -930,8 +961,44 @@ namespace {
         }
     }
 
+    bool isPresentWaitCommand(const std::string_view name) {
+        return name == "vkWaitForPresentKHR"
+#if defined(VK_KHR_present_wait2)
+            || name == "vkWaitForPresent2KHR"
+#endif
+            ;
+    }
+
+    // Instrument only an application-invoked wait. Do not invent completion,
+    // shorten timeouts, reinterpret present IDs, or take a swapchain-owner lock
+    // across the driver's blocking call. GPA gates retain optional support.
+    VkResult VKAPI_CALL myvkWaitForPresentKHR(VkDevice device,
+            VkSwapchainKHR swapchain, uint64_t presentId, uint64_t timeout) {
+        const auto next = reinterpret_cast<PFN_vkWaitForPresentKHR>(
+            instance_info->funcs.GetDeviceProcAddr(device, "vkWaitForPresentKHR"));
+        return present_diagnostics::observeApplicationPresentWait(device, swapchain,
+            present_diagnostics::PresentWaitApi::Khr, presentId, timeout,
+            [&] { return next(device, swapchain, presentId, timeout); });
+    }
+
+#if defined(VK_KHR_present_wait2)
+    VkResult VKAPI_CALL myvkWaitForPresent2KHR(VkDevice device,
+            VkSwapchainKHR swapchain, const VkPresentWait2InfoKHR* info) {
+        const auto next = reinterpret_cast<PFN_vkWaitForPresent2KHR>(
+            instance_info->funcs.GetDeviceProcAddr(device, "vkWaitForPresent2KHR"));
+        return present_diagnostics::observeApplicationPresentWait(device, swapchain,
+            present_diagnostics::PresentWaitApi::Khr2, info->presentId, info->timeout,
+            [&] { return next(device, swapchain, info); });
+    }
+#endif
+
     // get optional function pointer override
     PFN_vkVoidFunction getProcAddr(const std::string& name) {
+        // Only the application-facing role observes this call. A lower
+        // spatial role must not count the same forwarded wait a second time.
+        if (isPresentWaitCommand(name) &&
+                (!frameGenerationLayer || !present_diagnostics::enabled()))
+            return nullptr;
         auto it = layer_info->map.find(name);
         if (it == layer_info->map.end()) return nullptr;
 
@@ -960,7 +1027,10 @@ namespace {
         if (std::string_view(name) ==
                 "vkGetPhysicalDeviceSurfaceCapabilities2KHR" ||
                 std::string_view(name) ==
-                "vkGetPhysicalDeviceSurfaceFormats2KHR") {
+                "vkGetPhysicalDeviceSurfaceFormats2KHR" ||
+                std::string_view(name) == "vkGetPhysicalDeviceFeatures2" ||
+                std::string_view(name) == "vkGetPhysicalDeviceFeatures2KHR" ||
+                isPresentWaitCommand(name)) {
             if (!instance || !layer_info->GetInstanceProcAddr ||
                     !layer_info->GetInstanceProcAddr(instance, name)) {
                 return nullptr;
@@ -980,6 +1050,10 @@ namespace {
         if (!layer_info || !instance_info) return nullptr;
 
         if (!instance_info->funcs.GetDeviceProcAddr) return nullptr;
+
+        if (isPresentWaitCommand(name) &&
+                !instance_info->funcs.GetDeviceProcAddr(device, name))
+            return nullptr;
 
         // A lower VkDevice can outlive a failed optional MAKO wrapper
         // initialization. Forward every command for that device directly,
@@ -2932,6 +3006,8 @@ namespace {
 #define VKPTR(name) reinterpret_cast<PFN_vkVoidFunction>(name)
                     { "vkCreateInstance", VKPTR(myvkCreateInstance) },
                     { "vkCreateDevice", VKPTR(myvkCreateDevice) },
+                    { "vkGetPhysicalDeviceFeatures2", VKPTR(myvkGetPhysicalDeviceFeatures2) },
+                    { "vkGetPhysicalDeviceFeatures2KHR", VKPTR(myvkGetPhysicalDeviceFeatures2) },
                     { "vkDestroyDevice", VKPTR(myvkDestroyDevice) },
                     { "vkDestroyInstance", VKPTR(myvkDestroyInstance) },
                     { "vkCreateWaylandSurfaceKHR",
@@ -2952,6 +3028,10 @@ namespace {
                     { "vkCreateSwapchainKHR", VKPTR(myvkCreateSwapchainKHR) },
                     { "vkAcquireNextImageKHR", VKPTR(myvkAcquireNextImageKHR) },
                     { "vkQueuePresentKHR", VKPTR(myvkQueuePresentKHR) },
+                    { "vkWaitForPresentKHR", VKPTR(myvkWaitForPresentKHR) },
+#if defined(VK_KHR_present_wait2)
+                    { "vkWaitForPresent2KHR", VKPTR(myvkWaitForPresent2KHR) },
+#endif
                     { "vkDestroySwapchainKHR", VKPTR(myvkDestroySwapchainKHR) }
 #undef VKPTR
                 },

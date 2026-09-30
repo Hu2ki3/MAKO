@@ -15,6 +15,52 @@ struct VkXlibSurfaceCreateInfoKHR;
 
 namespace mako::layer {
 
+    /// Negotiate application completion pacing before device creation. The
+    /// private generated-output queue adds latency to the final real image;
+    /// presentation-wait clients can otherwise feed that delay back into
+    /// production of the next real frame. Keep this process-start choice
+    /// independent of live multiplier, VRR and 0x changes.
+    [[nodiscard]] constexpr bool needsBridgePresentWaitFallback(
+            const bool bridgeConnected, const bool applicationFacingRole,
+            const bool generationProvisioned) noexcept {
+        return bridgeConnected && applicationFacingRole && generationProvisioned;
+    }
+
+    inline void disableBridgePresentWaitFeatures(
+            VkPhysicalDeviceFeatures2& features) noexcept {
+        for (auto* item = static_cast<VkBaseOutStructure*>(features.pNext);
+                item; item = item->pNext) {
+            if (item->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR)
+                reinterpret_cast<VkPhysicalDevicePresentWaitFeaturesKHR*>(item)
+                    ->presentWait = VK_FALSE;
+#if defined(VK_KHR_present_wait2)
+            if (item->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_2_FEATURES_KHR)
+                reinterpret_cast<VkPhysicalDevicePresentWait2FeaturesKHR*>(item)
+                    ->presentWait2 = VK_FALSE;
+#endif
+        }
+    }
+
+    /// Reject an explicit request for a feature we did not advertise. Never
+    /// silently rewrite the application's device-create chain or wait calls.
+    [[nodiscard]] inline bool requestsApplicationPresentWait(
+            const void* chain) noexcept {
+        for (auto* item = static_cast<const VkBaseInStructure*>(chain);
+                item; item = item->pNext) {
+            if (item->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR &&
+                    reinterpret_cast<const VkPhysicalDevicePresentWaitFeaturesKHR*>(item)
+                        ->presentWait)
+                return true;
+#if defined(VK_KHR_present_wait2)
+            if (item->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_2_FEATURES_KHR &&
+                    reinterpret_cast<const VkPhysicalDevicePresentWait2FeaturesKHR*>(item)
+                        ->presentWait2)
+                return true;
+#endif
+        }
+        return false;
+    }
+
     /// Headless probes and native Wayland instances need no X11 adapter.
     [[nodiscard]] inline bool requestsGamescopeScalingSurface(
             const VkInstanceCreateInfo& info) noexcept {

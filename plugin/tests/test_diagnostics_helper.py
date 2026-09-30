@@ -57,7 +57,9 @@ MAKO Renderer: present diagnostics: operation=swapchain-recreation-observed cont
 MAKO Renderer: present diagnostics: operation=replacement-wsi-prime context=2 reason=null-old-swapchain spatial_scaling_active=1 wait_semaphores=1 frame=0 sequence=1 action=direct-application-present-before-spatial-work
 MAKO Renderer: present diagnostics: operation=replacement-backend-stabilization context=2 phase=started duration_ms=250 action=scaled-real-frame-only
 MAKO Renderer: present diagnostics: operation=runtime-state-applied context=2 state_revision=2 adaptive=1 target_fps=110 effective_flow_scale=0.75 lighter_model=1 generated_frame_capacity=3 hdr=1
-MAKO Renderer: present diagnostics: operation=gamescope-bridge-timing bridge=12 pid=4242 timestamp_source=compositor-reported requests=120 feedbacks=118 outstanding=2 unmatched=0
+MAKO Renderer: present diagnostics: operation=gamescope-bridge-timing bridge=12 pid=4242 timestamp_source=compositor-reported requests=120 feedbacks=118 outstanding=2 unmatched=0 nonconsecutive_ids=0 repeated_timestamps=94 backwards_timestamps=0
+MAKO Renderer: present diagnostics: operation=application-present-mode context=2 swapchain=1234 requested_present_mode=0 dynamic_override=1 effective_present_mode=2 ordered_transport=1 bridge=1 action=diagnostic-only
+MAKO Renderer: present diagnostics: operation=application-present-wait waiter=19 pid=4242 device=55 swapchain=1234 api=KHR2 calls=60 successful=59 timeouts=1 errors=0 polls=1 first_present_id=20 last_present_id=79 duration_mean_ms=8.2 duration_max_ms=21.5
 MAKO Renderer: spatial scaling surface virtualized: source=854x532; presentation=1280x800; policy_revision=4; query_generation=9
 MAKO Renderer: spatial scaling surface bridge: surface=1234; xwayland_server=0; window=5678; transport=wayland; gamescope_wsi=isolated; application_surface=x11; extent_contract=window
 MAKO Renderer: spatial scaling swapchain policy: requested=854x532; surface_current=1280x800; surface_extent_mode=fixed; advertised_source=854x532; advertised_presentation=1280x800; actual_source=854x532; actual_presentation=1280x800; policy_revision=4; contract_policy_revision=4; query_generation=9; selected_source=854x532; selected_presentation=1280x800; format=44; format_supported=1; shape_supported=1; queue_presentation_support=supported; queue_commands_supported=1; variable_feedback_suppressed=0; inactive_reason=none; source_presentation_split=1; active=1
@@ -175,6 +177,9 @@ class DiagnosticsHelperTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("spatial scaling surface virtualized", result.stdout)
         self.assertIn("operation=gamescope-bridge-timing", result.stdout)
+        self.assertIn("repeated_timestamps=94", result.stdout)
+        self.assertIn("operation=application-present-mode", result.stdout)
+        self.assertIn("operation=application-present-wait", result.stdout)
         self.assertIn("spatial scaling surface bridge", result.stdout)
         self.assertIn("application_surface=x11; extent_contract=window", result.stdout)
         self.assertIn("transport=wayland; gamescope_wsi=isolated", result.stdout)
@@ -389,6 +394,9 @@ class DiagnosticsHelperTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("operation=fixed-plan", result.stdout)
         self.assertIn("operation=gamescope-bridge-timing", result.stdout)
+        self.assertIn("repeated_timestamps=94", result.stdout)
+        self.assertIn("operation=application-present-mode", result.stdout)
+        self.assertIn("operation=application-present-wait", result.stdout)
         self.assertIn("fixed-cadence-collapse-probe-start", result.stdout)
         self.assertIn("fixed-cadence-collapse-probe-recovered", result.stdout)
         self.assertIn("fixed-cadence-collapse-recovery-verified", result.stdout)
